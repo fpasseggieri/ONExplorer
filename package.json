@@ -20,8 +20,8 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "PORT=${PORT:-3000} concurrently \"react-scripts start\" \"node server/expressServer.js ${PORT:-3000}\"",
-    "start-react": "PORT=${PORT:-3000} react-scripts start",
+    "start": "cross-env PORT=${PORT:-3000} concurrently \"react-scripts start\" \"node server/expressServer.js ${PORT:-3000}\"",
+    "start-react": "cross-env PORT=${PORT:-3000} react-scripts start",
     "start-server": "node server/expressServer.js ${PORT:-3000}",
     "build": "react-scripts build",
     "test": "react-scripts test",
@@ -44,5 +44,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
   }
 }

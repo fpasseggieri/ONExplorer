@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -11,11 +11,6 @@ import {
   TableRow,
   Button,
   IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
   CircularProgress,
   Alert,
   Tooltip,
@@ -23,7 +18,6 @@ import {
   Backdrop
 } from '@mui/material';
 import {
-  Add as AddIcon,
   Check as CheckIcon,
   Close as CloseIcon,
   Refresh as RefreshIcon,
@@ -32,13 +26,6 @@ import {
 } from '@mui/icons-material';
 import { getLogisticsObjects, apiCall } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
-
-const STATUS_COLORS = {
-    REQUEST_PENDING: { bg: '#fff3e0', color: '#e65100', label: 'PENDING' },
-    REQUEST_ACCEPTED: { bg: '#e8f5e9', color: '#2e7d32', label: 'ACCEPTED' },
-    REQUEST_REJECTED: { bg: '#ffebee', color: '#c62828', label: 'REJECTED' },
-    REQUEST_FAILED: { bg: '#fce4ec', color: '#c2185b', label: 'FAILED' }
-};
 
 const ActionButtons = ({ change, onStatusUpdate }) => {
   const navigate = useNavigate();
@@ -100,11 +87,7 @@ const Changes = () => {
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  useEffect(() => {
-    fetchChanges();
-  }, []);
-
-  const fetchChanges = async () => {
+  const fetchChanges = useCallback(async () => {
     try {
       setLoading(true);
       const response = await getLogisticsObjects('https%3A%2F%2Fonerecord.iata.org%2Fns%2Fapi%23ChangeRequest');
@@ -125,7 +108,11 @@ const Changes = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchChanges();
+  }, [fetchChanges]);
 
   const cleanupItem = (item) => {
     return {

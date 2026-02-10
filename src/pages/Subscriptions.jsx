@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -16,7 +16,6 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Chip,
   CircularProgress,
   Alert,
   Tooltip,
@@ -35,13 +34,6 @@ import {
 import { getLogisticsObjects, apiCall, externalApiCall } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 import { validateSettings } from '../utils/settingsValidator';
-
-const STATUS_COLORS = {
-    REQUEST_PENDING: { bg: '#fff3e0', color: '#e65100', label: 'PENDING' },
-    REQUEST_ACCEPTED: { bg: '#e8f5e9', color: '#2e7d32', label: 'ACCEPTED' },
-    REQUEST_REJECTED: { bg: '#ffebee', color: '#c62828', label: 'REJECTED' },
-    REQUEST_FAILED: { bg: '#fce4ec', color: '#c2185b', label: 'FAILED' }
-};
 
 const TOPIC_TYPES = [
   'LOGISTICS_OBJECT_IDENTIFIER',
@@ -162,11 +154,33 @@ const Subscriptions = () => {
     setSettingsValid(isValid);
   }, []);
 
+  const fetchSubscriptions = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await getLogisticsObjects('https%3A%2F%2Fonerecord.iata.org%2Fns%2Fapi%23SubscriptionRequest');
+      
+      const rawData = response['@graph'] ? response['@graph'] : [response];
+      const cleanArray = rawData.filter(value => Object.keys(value).length !== 0);
+      const cleanedData = cleanArray.map(cleanupItem);
+
+      const sortedSubscriptions = cleanedData.sort((a, b) => {
+        return new Date(b.requestTime) - new Date(a.requestTime);
+      });
+
+      setSubscriptions(sortedSubscriptions);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (settingsValid) {
       fetchSubscriptions();
     }
-  }, [settingsValid]);
+  }, [settingsValid, fetchSubscriptions]);
 
   useEffect(() => {
     const loadServers = () => {
@@ -185,30 +199,6 @@ const Subscriptions = () => {
     loadExternalSubscriptions();
   }, []);
 
-  const fetchSubscriptions = async () => {
-    try {
-      setLoading(true);
-      const response = await getLogisticsObjects('https%3A%2F%2Fonerecord.iata.org%2Fns%2Fapi%23SubscriptionRequest');
-      
-      // Check if response is an array, if not convert it to an array
-      const rawData = response['@graph'] ? response['@graph'] : [response];
-      const cleanArray = rawData.filter(value => Object.keys(value).length !== 0);
-      // Clean up each item in the array
-      const cleanedData = cleanArray.map(cleanupItem);
-
-      // Sort subscriptions by request time in descending order (newest first)
-      const sortedSubscriptions = cleanedData.sort((a, b) => {
-        return new Date(b.requestTime) - new Date(a.requestTime);
-      });
-
-      setSubscriptions(sortedSubscriptions);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
   const cleanupItem = (item) => {
   
     return {

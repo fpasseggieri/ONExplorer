@@ -15,7 +15,6 @@ import {
   FormControl
 } from '@mui/material';
 import {
-  Dashboard as DashboardIcon,
   Storage as DatabaseIcon,
   Settings as SettingsIcon,
   Notifications as NotificationsIcon,
@@ -118,11 +117,11 @@ const Sidebar = ({ open, toggleDrawer }) => {
   };
 
   const menuItems = [
-    //{ text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { text: 'Database', icon: <DatabaseIcon />, path: '/' },
     ...(settingsValid ? [
       { text: 'Create Object', icon: <AddIcon />, path: '/logistics-objects/create' },
-      { text: 'Changes', icon: <EditIcon />, path: '/changes' }
+      { text: 'Edit Object', icon: <EditIcon />, path: '/edit' },
+      { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions' },
     ] : []),
     { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications' },
     { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions' },

@@ -4,7 +4,6 @@ import {
   TextField,
   Button,
   FormControl,
-  InputLabel,
   Select,
   MenuItem,
   Typography,
@@ -17,17 +16,12 @@ import {
   Switch,
   FormControlLabel,
   CircularProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Chip,
   Paper
 } from '@mui/material';
 import {
   Add as AddIcon,
   Remove as RemoveIcon,
   Info as InfoIcon,
-  ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import { getLogisticsObjects } from '../utils/api';
 
@@ -92,7 +86,7 @@ const generateFormFields = async (columns) => {
               field.dataType = 'double';
               break;
             case 'datetime':
-              field.dataType = 'datetime-local';
+              field.dataType = 'datetime';
               break;
             default:
               field.dataType = 'text';
@@ -130,10 +124,9 @@ const createTypedValue = (val = '', dataType) => {
         '@value': String(val)
       };
     case 'datetime':
-      console.log('datetime', val)
       return {
         '@type': 'http://www.w3.org/2001/XMLSchema#dateTime',
-        '@value': Date.parse(val).toString()
+        '@value': String(val)
       };
     default:
       return val;
@@ -169,58 +162,54 @@ const FormField = memo(({ field, value, onChange }) => {
         setUseDirectInput(true);
       }
     }
-  }, [value, referenceOptions, loading]);
-
-  const loadReferenceOptions = async () => {
-    if (!dropdownOpen || !field.dataType === 'url') return;
-    setLoading(true);
-    try {
-      if (field.codelist) {
-        // Extract codelist name from valueIRI (text after #)
-        const codelistName = field.valueIRI.split('#')[1];
-        // Import codelists
-        const codelists = await import('../assets/codelists/codelists.json');
-        // Get specific codelist values and ensure each has an id property
-        const codelistValues = (codelists.default[codelistName] || []).map(item => ({
-          '@id': item.id,  // Add @id to match the format of API responses
-          '@type': field.valueIRI,
-          description: item.description,
-          id: item.id      // Keep original id for backward compatibility
-        }));
-        setReferenceOptions(codelistValues);
-        
-        if (value && !codelistValues.some(option => option['@id'] === value)) {
-          setUseDirectInput(true);
-        }
-      } else {
-        // Existing API call logic for non-codelist references
-        const type = encodeURIComponent(field.valueIRI);
-        const response = await getLogisticsObjects(type);
-        
-        const objects = (response['@graph'] || [response])
-          .filter(obj => obj && Object.keys(obj).length > 0);
-        setReferenceOptions(objects);
-
-        if (value && !objects.some(option => option['@id'] === value)) {
-          setUseDirectInput(true);
-        }
-      }
-    } catch (error) {
-      console.error(`Error loading options for ${field.name}:`, error);
-      setReferenceOptions([]);
-      if (value) {
-        setUseDirectInput(true);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [value, referenceOptions, loading, field.dataType]);
 
   useEffect(() => {
+    const loadReferenceOptions = async () => {
+      if (!dropdownOpen || field.dataType !== 'url') return;
+      setLoading(true);
+      try {
+        if (field.codelist) {
+          const codelistName = field.valueIRI.split('#')[1];
+          const codelists = await import('../assets/codelists/codelists.json');
+          const codelistValues = (codelists.default[codelistName] || []).map(item => ({
+            '@id': item.id,
+            '@type': field.valueIRI,
+            description: item.description,
+            id: item.id
+          }));
+          setReferenceOptions(codelistValues);
+
+          if (value && !codelistValues.some(option => option['@id'] === value)) {
+            setUseDirectInput(true);
+          }
+        } else {
+          const type = encodeURIComponent(field.valueIRI);
+          const response = await getLogisticsObjects(type);
+
+          const objects = (response['@graph'] || [response])
+            .filter(obj => obj && Object.keys(obj).length > 0);
+          setReferenceOptions(objects);
+
+          if (value && !objects.some(option => option['@id'] === value)) {
+            setUseDirectInput(true);
+          }
+        }
+      } catch (error) {
+        console.error(`Error loading options for ${field.name}:`, error);
+        setReferenceOptions([]);
+        if (value) {
+          setUseDirectInput(true);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
     if (dropdownOpen) {
       loadReferenceOptions();
     }
-  }, [dropdownOpen]);
+  }, [dropdownOpen, field.dataType, field.codelist, field.valueIRI, field.name, value]);
 
   const commonProps = {
     fullWidth: true,
@@ -392,7 +381,7 @@ const FormField = memo(({ field, value, onChange }) => {
                   case 'datetime':
                     processedValue = {
                       '@type': 'http://www.w3.org/2001/XMLSchema#dateTime',
-                      '@value': Date.parse(newValue).toString()
+                      '@value': String(newValue)
                     };
                     break;
                   default:
@@ -502,7 +491,6 @@ const LogisticsObjectForm = ({ objectType, initialData, onSubmit }) => {
     }
 
     let newValue;
-    console.log('handleFieldChange', fieldName, value, fieldDataType, fieldType)
     switch(fieldDataType) {
       case 'url':
         if (fieldType !== 'fieldset') {
@@ -535,10 +523,10 @@ const LogisticsObjectForm = ({ objectType, initialData, onSubmit }) => {
         };
         break;
         
-      case 'datetime-local':
+      case 'datetime':
         newValue = {
           '@type': 'http://www.w3.org/2001/XMLSchema#dateTime',
-          '@value': Date.parse(value).toString()
+          '@value': String(value)
         };
         break;
         
@@ -582,7 +570,7 @@ const LogisticsObjectForm = ({ objectType, initialData, onSubmit }) => {
                     return parseInt(formData[field.name]?.['@value'] || '0', 10);
                   case 'double':
                     return parseFloat(formData[field.name]?.['@value'] || '0');
-                  case 'datetime-local':
+                  case 'datetime':
                     return formData[field.name]?.['@value'] || '';
                   default:
                     return formData[field.name];

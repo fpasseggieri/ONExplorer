@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Box, CssBaseline } from '@mui/material';
 import Sidebar from './components/Sidebar';
@@ -15,7 +15,6 @@ import Dashboard from './pages/Dashboard';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
-  const [notifications, setNotifications] = useState([]);
 
   // Calculate the server port based on the React app's port
   const getServerPort = () => {
@@ -86,7 +85,6 @@ function App() {
           if (!storedNotifications.some(n => n.id === processedNotification.id)) {
             const updatedNotifications = [...storedNotifications, processedNotification];
             localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
-            setNotifications(updatedNotifications);
             console.log('Processed notification:', processedNotification);
           }
         }

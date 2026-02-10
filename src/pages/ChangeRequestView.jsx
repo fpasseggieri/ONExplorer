@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link as RouterLink, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -7,7 +7,6 @@ import {
   Button,
   CircularProgress,
   Alert,
-  Divider,
   Chip,
   Tooltip,
   Card,
@@ -26,7 +25,6 @@ import {
   Numbers as NumbersIcon,
   Notifications as NotificationsIcon
 } from '@mui/icons-material';
-import { apiCall } from '../utils/api';
 import jsonld from 'jsonld';
 
 const ChangeRequestView = () => {
@@ -43,7 +41,11 @@ const ChangeRequestView = () => {
     token: location.state?.token || localStorage.getItem('token')
   };
 
-  const isExternalServer = serverDetails.baseUrl !== localStorage.getItem('baseUrl');
+  const frame = useMemo(() => ({
+    "@context": {
+      "@vocab": "https://onerecord.iata.org/ns/api#"
+    }
+  }), []);
 
   useEffect(() => {
     let isMounted = true;
@@ -90,13 +92,7 @@ const ChangeRequestView = () => {
     return () => {
       isMounted = false;
     };
-  }, [id, serverDetails.baseUrl, serverDetails.token]);
-
-  const frame = {
-    "@context": {
-      "@vocab": "https://onerecord.iata.org/ns/api#"
-    }
-  };
+  }, [id, serverDetails.baseUrl, serverDetails.token, frame]);
 
   const cleanChangeData = (rawData) => {
     if (!rawData) return null;

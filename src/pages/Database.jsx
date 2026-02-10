@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Table,
   TableBody,
@@ -11,18 +11,13 @@ import {
   Alert,
   Box,
   Typography,
-  Divider,
   IconButton,
-  Menu,
   MenuItem,
   Grid,
-  Card,
-  CardContent,
   FormControl,
   InputLabel,
   Select,
   Chip,
-  Stack,
   TextField,
   InputAdornment,
   Tooltip,
@@ -31,11 +26,8 @@ import {
 import {
   LocalShipping as LocalShippingIcon,
   Inventory as InventoryIcon,
-  FlightTakeoff as FlightTakeoffIcon,
-  MoreVert as MoreVertIcon,
   Visibility as VisibilityIcon,
   Edit as EditIcon,
-  FilterList as FilterListIcon,
   Clear as ClearIcon,
   Search as SearchIcon,
   Refresh as RefreshIcon,
@@ -91,7 +83,6 @@ const Database = () => {
   const [filteredData, setFilteredData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [anchorEl, setAnchorEl] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedType, setSelectedType] = useState('');
   const [types, setTypes] = useState([]);
@@ -122,12 +113,10 @@ const Database = () => {
     }
   }, []);
 
-  // Extract unique types and set filtered data
   useEffect(() => {
     const uniqueTypes = [...new Set(data.map(item => item.type))];
     setTypes(uniqueTypes);
-    filterData(selectedType);
-  }, [data, selectedType]);
+  }, [data]);
 
   const fetchData = async () => {
     try {
@@ -149,14 +138,6 @@ const Database = () => {
       
     } finally {
       setLoading(false);
-    }
-  };
-
-  const filterData = (type) => {
-    if (!type) {
-      setFilteredData(data);
-    } else {
-      setFilteredData(data.filter(item => item.type === type));
     }
   };
 
@@ -215,12 +196,7 @@ const Database = () => {
     fetchData();
   };
 
-  // Apply filters whenever data, type filter, or search changes
-  useEffect(() => {
-    applyFilters();
-  }, [data, selectedType, searchId]);
-
-  const applyFilters = () => {
+  const applyFilters = useCallback(() => {
     let filtered = [...data];
 
     // Apply type filter
@@ -236,7 +212,11 @@ const Database = () => {
     }
 
     setFilteredData(filtered);
-  };
+  }, [data, selectedType, searchId]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
 
   const handleSearchChange = (event) => {
     setSearchId(event.target.value);
@@ -265,86 +245,6 @@ const Database = () => {
     setExternalObjects(updatedObjects);
     localStorage.setItem('externalLogisticsObjects', JSON.stringify(updatedObjects));
   };
-
-  const ExternalLogisticsObjectsTable = () => (
-    <>
-      <Typography {...TABLE_STYLES.header} sx={{ mt: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <InventoryIcon />
-        External Logistics Objects
-      </Typography>
-      {externalObjects.length === 0 ? (
-        <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography color="textSecondary">
-            No external logistics objects found
-          </Typography>
-        </Paper>
-      ) : (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow {...TABLE_STYLES.tableHead}>
-                <TableCell>Server</TableCell>
-                <TableCell>ID</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {externalObjects.map((row) => (
-                <TableRow
-                  key={row.id}
-                  {...TABLE_STYLES.tableRow}
-                >
-                  <TableCell>{row.server}</TableCell>
-                  <TableCell>{row.id}</TableCell>
-                  <TableCell>
-                    <Box sx={{
-                      backgroundColor: 
-                        row.type === 'Shipment' ? '#e3f2fd' :
-                        row.type === 'Booking' ? '#f3e5f5' :
-                        '#e8f5e9',
-                      color: 
-                        row.type === 'Shipment' ? '#1976d2' :
-                        row.type === 'Booking' ? '#7b1fa2' :
-                        '#2e7d32',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      display: 'inline-block',
-                      fontSize: '0.875rem'
-                    }}>
-                      {row.type}
-                    </Box>
-                  </TableCell>
-                  <TableCell>{row.description}</TableCell>
-                  <TableCell align="right">
-                    <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                      <Tooltip title="View Details">
-                        <IconButton
-                          color="primary"
-                          onClick={() => navigate(`/external-logistics-objects/${row.serverId}/${row.id}`)}
-                        >
-                          <VisibilityIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Remove from local database">
-                        <IconButton
-                          color="error"
-                          onClick={() => handleDeleteExternalObject(row)}
-                        >
-                          <CloseIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
-    </>
-  );
 
   return (
     <Box>

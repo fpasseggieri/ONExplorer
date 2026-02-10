@@ -10,8 +10,7 @@ import {
   Select,
   MenuItem,
   Alert,
-  CircularProgress,
-  Box
+  CircularProgress
 } from '@mui/material';
 import { apiCall, externalApiCall } from '../utils/api';
 
@@ -19,9 +18,7 @@ const SubscriptionDialog = ({ open, onClose, objectId }) => {
   const [selectedServer, setSelectedServer] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [servers, setServers] = useState(
-    JSON.parse(localStorage.getItem('externalServers') || '[]')
-  );
+  const servers = JSON.parse(localStorage.getItem('externalServers') || '[]');
 
   const handleSubmit = async () => {
     if (!selectedServer) return;

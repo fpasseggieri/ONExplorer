@@ -32,7 +32,7 @@ export const getLogisticsObjects = async (type = '') => {
   const response = await fetch(`${config.baseUrl}/logistics-objects/internal/_all?limit=2000&offset=0&t=${type}`, {
     method: 'GET',
     headers: {
-      'Content-Type': 'application/ld+json'
+      ...config.headers
     }
   });
 

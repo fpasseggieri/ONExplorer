@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom'; // Import useNavigate
 import {
   Box,
   CircularProgress,
   Alert,
-  Divider,
   Chip,
   Card,
   CardContent,
@@ -34,6 +33,34 @@ const SubscriptionRequestView = () => {
   const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Frame for JSON-LD processing
+  const frame = useMemo(() => ({
+    "@context": {
+      "@vocab": "https://onerecord.iata.org/ns/api#",
+      "cargo": "https://onerecord.iata.org/ns/cargo#"
+    },
+    "@type": "SubscriptionRequest"
+  }), []);
+
+  // Clean subscription data function
+  const cleanSubscriptionData = useCallback((rawData) => {
+    if (!rawData) return null;
+
+    return {
+      id: rawData['@id']?.split('/').pop() || id,
+      type: rawData['@type']?.split('#').pop() || '',
+      status: rawData['hasRequestStatus']?.['@id']?.split('#').pop() || 'UNKNOWN',
+      requestedBy: rawData['isRequestedBy']?.['@id'] || '',
+      requestTime: rawData['isRequestedAt']?.['@value'] || '',
+      subscription: {
+        id: rawData['hasSubscription']?.['@id']?.split('/').pop() || '',
+        subscriber: rawData['hasSubscription']?.['hasSubscriber']?.['@id'] || '',
+        topic: rawData['hasSubscription']?.['hasTopic']?.['@value'] || '',
+        topicType: rawData['hasSubscription']?.['hasTopicType']?.['@id']?.split('#').pop() || ''
+      }
+    };
+  }, [id]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -95,35 +122,7 @@ const SubscriptionRequestView = () => {
       setError('No subscription ID provided');
       setLoading(false);
     }
-  }, [id, serverId]);
-
-  // Frame for JSON-LD processing
-  const frame = {
-    "@context": {
-      "@vocab": "https://onerecord.iata.org/ns/api#",
-      "cargo": "https://onerecord.iata.org/ns/cargo#"
-    },
-    "@type": "SubscriptionRequest"
-  };
-
-  // Clean subscription data function
-  const cleanSubscriptionData = (rawData) => {
-    if (!rawData) return null;
-
-    return {
-      id: rawData['@id']?.split('/').pop() || id,
-      type: rawData['@type']?.split('#').pop() || '',
-      status: rawData['hasRequestStatus']?.['@id']?.split('#').pop() || 'UNKNOWN',
-      requestedBy: rawData['isRequestedBy']?.['@id'] || '',
-      requestTime: rawData['isRequestedAt']?.['@value'] || '',
-      subscription: {
-        id: rawData['hasSubscription']?.['@id']?.split('/').pop() || '',
-        subscriber: rawData['hasSubscription']?.['hasSubscriber']?.['@id'] || '',
-        topic: rawData['hasSubscription']?.['hasTopic']?.['@value'] || '',
-        topicType: rawData['hasSubscription']?.['hasTopicType']?.['@id']?.split('#').pop() || ''
-      }
-    };
-  };
+  }, [id, serverId, frame, cleanSubscriptionData]);
 
   const handleBack = () => {
     navigate('/subscriptions');

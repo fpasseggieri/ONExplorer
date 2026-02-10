@@ -4,7 +4,6 @@ import {
   Paper,
   Typography,
   Grid,
-  CircularProgress
 } from '@mui/material';
 import {
   LineChart,

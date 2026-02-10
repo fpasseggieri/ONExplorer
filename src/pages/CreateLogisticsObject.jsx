@@ -7,7 +7,6 @@ import {
   Button,
   TextField,
   MenuItem,
-  CircularProgress,
   Alert,
   Divider
 } from '@mui/material';
@@ -59,7 +58,7 @@ const CreateLogisticsObject = () => {
     setError(null);
 
     try {
-      const [schema, type] = selectedType.split('.');
+      const [, type] = selectedType.split('.');
       const jsonLdData = {
         '@context': {
           '@vocab': 'https://onerecord.iata.org/ns/cargo#'

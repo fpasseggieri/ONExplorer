@@ -4,7 +4,6 @@ import {
   Typography,
   Button,
   CircularProgress,
-  Paper,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -12,11 +11,6 @@ import {
   Alert
 } from '@mui/material';
 import LogisticsObjectForm from './LogisticsObjectForm';
-import { 
-  getLogisticsObjectWithRevision, 
-  submitChangeRequest,
-  apiCall 
-} from '../utils/api';
 import jsonld from 'jsonld';
 
 const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) => {
@@ -356,7 +350,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
           });
         } else if (typeof value === 'object' && value !== null) {
           const objectId = value['@id'];
-          if (!objectId) return; // Skip if no ID
+          if (!objectId) return operations; // Skip if no ID
           
           // Delete the object reference from parent
           operations.push({
@@ -419,17 +413,12 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
           if (propertySchema) {
             // Delete original value if it exists
             if (originalValue) {
-              operations.push({
-                "@type": "api:Operation",
-                "api:op": { "@id": "api:DELETE" },
-                "api:s": originalData['@id'],
-                "api:p": `https://onerecord.iata.org/ns/cargo#${key}`,
-                "api:o": [{
-                  "@type": "api:OperationObject",
-                  "api:hasDatatype": propertySchema.valueIRI,
-                  "api:hasValue": originalValue['@id'] || originalValue
-                }]
-              });
+              operations.push(...createNestedDeleteOperations(
+                originalValue,
+                originalData['@id'],
+                key,
+                propertySchema
+              ));
             }
 
             // Add new value with proper nesting

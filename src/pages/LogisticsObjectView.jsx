@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link as RouterLink, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -36,19 +36,14 @@ import {
 import {
   ArrowBack as ArrowBackIcon,
   LocalShipping as LocalShippingIcon,
-  AccessTime as AccessTimeIcon,
   Description as DescriptionIcon,
-  Refresh as RefreshIcon,
   Send as SendIcon,
   ContentCopy as ContentCopyIcon,
   Event as EventIcon,
-  LocationOn as LocationOnIcon,
   ExpandMore as ExpandMoreIcon,
   Code as CodeIcon,
-  Visibility as VisibilityIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
-import { apiCall } from '../utils/api';
 import jsonld from 'jsonld';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -146,23 +141,7 @@ const LogisticsObjectView = () => {
   // Add this to determine if the object is external
   const isExternalObject = serverUrl !== localStorage.getItem('baseUrl');
 
-  useEffect(() => {
-    if (!serverUrl || !token) {
-      setError('Server configuration not found');
-      return;
-    }
-    fetchObjectData();
-    fetchEvents();
-    fetchAuditTrail();
-  }, [id, serverUrl, token]);
-
-  const frame = {
-    "@context": {
-      "@vocab": "https://onerecord.iata.org/ns/cargo#"
-    }
-  };
-
-  const fetchObjectData = async () => {
+  const fetchObjectData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -239,9 +218,9 @@ const LogisticsObjectView = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, navigate, serverUrl, token]);
 
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     try {
       setLoadingEvents(true);
       const response = await fetch(`${serverUrl}/logistics-objects/${id}/logistics-events`, {
@@ -308,9 +287,9 @@ const LogisticsObjectView = () => {
     } finally {
       setLoadingEvents(false);
     }
-  };
+  }, [id, serverUrl, token]);
 
-  const fetchAuditTrail = async () => {
+  const fetchAuditTrail = useCallback(async () => {
     try {
       setLoadingAuditTrail(true);
       const response = await fetch(`${serverUrl}/logistics-objects/${id}/audit-trail`, {
@@ -326,7 +305,17 @@ const LogisticsObjectView = () => {
     } finally {
       setLoadingAuditTrail(false);
     }
-  };
+  }, [id, serverUrl, token]);
+
+  useEffect(() => {
+    if (!serverUrl || !token) {
+      setError('Server configuration not found');
+      return;
+    }
+    fetchObjectData();
+    fetchEvents();
+    fetchAuditTrail();
+  }, [fetchAuditTrail, fetchEvents, fetchObjectData, serverUrl, token]);
 
   const handleBack = () => {
     navigate('/');
@@ -489,109 +478,6 @@ const LogisticsObjectView = () => {
     }
   };
 
-  const renderLink = (url) => {
-    if (!url) return <Typography>-</Typography>;
-    
-    if (isLogisticsObjectLink(url)) {
-      const isExternal = !url.startsWith(serverUrl);
-      const objectId = url.split('/logistics-objects/')[1];
-      
-      if (isExternal) {
-        const externalServerUrl = new URL(url).origin;
-        const externalServers = JSON.parse(localStorage.getItem('externalServers') || '[]');
-        const serverConfig = externalServers.find(s => s.baseUrl === externalServerUrl);
-
-        return (
-          <Button
-            onClick={() => {
-              navigate(`/logistics-objects/${objectId}`, {
-                replace: false,
-                state: { 
-                  isExternal: true,
-                  serverUrl: externalServerUrl,
-                  token: serverConfig?.token
-                }
-              });
-              window.location.reload();
-            }}
-            startIcon={<LocalShippingIcon />}
-            sx={{ textTransform: 'none' }}
-          >
-            View External Logistics Object
-          </Button>
-        );
-      } else {
-        return (
-          <Button
-            onClick={() => {
-              navigate(`/logistics-objects/${objectId}`, {
-                replace: false,
-                state: { 
-                  isExternal: false,
-                  serverUrl: serverUrl,
-                  token: token
-                }
-              });
-              window.location.reload();
-            }}
-            startIcon={<LocalShippingIcon />}
-            sx={{ textTransform: 'none' }}
-          >
-            View Logistics Object
-          </Button>
-        );
-      }
-    } else if (isExternalLink(url)) {
-      return (
-        <Link
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          sx={{ 
-            wordBreak: 'break-all',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            color: 'primary.main',
-            textDecoration: 'none',
-            visibility: 'visible',
-            '&:hover': {
-              textDecoration: 'underline',
-              color: 'primary.dark'
-            }
-          }}
-        >
-          <VisibilityIcon 
-            sx={{ 
-              fontSize: 16,
-              color: 'primary.main'
-            }} 
-          />
-          {url}
-        </Link>
-      );
-    }
-    return null;
-  };
-
-  const getObjectPath = (url) => {
-    try {
-      const path = new URL(url).pathname;
-      const id = path.split('/logistics-objects/')[1];
-      return `/logistics-objects/${id}`;
-    } catch {
-      return '#';
-    }
-  };
-
-  const cleanupItem = (item) => {
-  
-    return {
-      id: item['@id'].split('/').pop()
-      // Add any other properties you need to clean up
-    };
-  };
-
   // Update the getEventColor function to match the actual event codes
   const getEventColor = (eventCode) => {
     const colorMap = {
@@ -622,8 +508,35 @@ const LogisticsObjectView = () => {
   const renderAuditTrail = () => {
     if (!auditTrail) return null;
 
-    // Check if @graph exists, if not, there are no change requests
-    if (!auditTrail['@graph']) {
+    let items = [];
+    let latestRevision = '1';
+
+    if (auditTrail['@graph']) {
+      items = auditTrail['@graph'];
+      latestRevision = auditTrail.hasLatestRevision?.['@value'] || '1';
+    } else if (Array.isArray(auditTrail)) {
+      items = auditTrail;
+    } else if (auditTrail['@id'] && auditTrail['@type']) {
+      items = [auditTrail];
+    }
+
+    const changeRequests = items
+      .filter(item => {
+        const type = item['@type'];
+        return type === 'ChangeRequest' || (typeof type === 'string' && type.includes('ChangeRequest'));
+      })
+      .sort((a, b) => {
+        const timeA = new Date(a.isRequestedAt?.['@value'] || a.requestedAt || 0).getTime();
+        const timeB = new Date(b.isRequestedAt?.['@value'] || b.requestedAt || 0).getTime();
+        return timeB - timeA;
+      });
+
+    const changes = items.filter(item => {
+      const type = item['@type'];
+      return type === 'Change' || (typeof type === 'string' && type.includes('Change'));
+    });
+
+    if (changeRequests.length === 0) {
       return (
         <Accordion sx={{ mt: 2 }}>
           <AccordionSummary
@@ -645,7 +558,7 @@ const LogisticsObjectView = () => {
               <Box sx={{ p: 2, textAlign: 'center' }}>
                 <Typography color="textSecondary">
                   No changes have been made to this object.
-                  Latest revision: {auditTrail.hasLatestRevision?.['@value'] || '1'}
+                  Latest revision: {latestRevision}
                 </Typography>
               </Box>
             )}
@@ -653,17 +566,6 @@ const LogisticsObjectView = () => {
         </Accordion>
       );
     }
-
-    // Get and sort change requests by time (newest first)
-    const changeRequests = auditTrail['@graph']
-      ?.filter(item => item['@type'] === 'ChangeRequest')
-      ?.sort((a, b) => {
-        const timeA = new Date(a.isRequestedAt['@value']).getTime();
-        const timeB = new Date(b.isRequestedAt['@value']).getTime();
-        return timeB - timeA;
-      }) || [];
-
-    const changes = auditTrail['@graph']?.filter(item => item['@type'] === 'Change') || [];
 
     return (
       <Accordion sx={{ mt: 2 }}>
@@ -694,32 +596,37 @@ const LogisticsObjectView = () => {
           ) : (
             <Timeline>
               {changeRequests.map((request) => {
-                const change = changes.find(c => c['@id'] === request.hasChange['@id']);
-                const requestId = request['@id'].split('/').pop();
+                const changeId = request.hasChange?.['@id'] || request.changeId;
+                const change = changes.find(c => c['@id'] === changeId);
+
+                const timestamp = request.isRequestedAt?.['@value'] || request.requestedAt || request.createdAt || Date.now();
+                const statusId = request.hasRequestStatus?.['@id'] || request.status || 'REQUEST_PENDING';
+                const description = change?.hasDescription || change?.description || 'Change Request';
+                const revision = change?.hasRevision?.['@value'] || change?.revision || '1';
                 
                 return (
                   <TimelineItem key={request['@id']}>
                     <TimelineOppositeContent color="textSecondary">
-                      {new Date(request.isRequestedAt['@value']).toLocaleString()}
+                      {new Date(timestamp).toLocaleString()}
                     </TimelineOppositeContent>
                     <TimelineSeparator>
-                      <TimelineDot color={getStatusColor(request.hasRequestStatus['@id'])} />
+                      <TimelineDot color={getStatusColor(statusId)} />
                       <TimelineConnector />
                     </TimelineSeparator>
                     <TimelineContent>
                       <Paper elevation={3} sx={{ p: 2 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                           <Typography variant="h6" component="span">
-                            {change?.hasDescription || 'Change Request'}
+                            {description}
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                           <Typography variant="body2" color="textSecondary">
-                            Revision: {change?.hasRevision?.['@value']}
+                            Revision: {revision}
                           </Typography>
                           <Chip 
-                            label={request.hasRequestStatus['@id'].split('#')[1]}
-                            color={getStatusColor(request.hasRequestStatus['@id'])}
+                            label={statusId.split('#')[1] || statusId}
+                            color={getStatusColor(statusId)}
                             size="small"
                           />
                         </Box>
@@ -867,29 +774,6 @@ const LogisticsObjectView = () => {
       </Button>
     );
   };
-
-  const renderAuditTrailItem = (event) => (
-    <TimelineItem>
-      <TimelineOppositeContent color="textSecondary">
-        {new Date(event.timestamp).toLocaleString()}
-      </TimelineOppositeContent>
-      <TimelineSeparator>
-        <TimelineDot color="primary">
-          <EventIcon />
-        </TimelineDot>
-        <TimelineConnector />
-      </TimelineSeparator>
-      <TimelineContent>
-        <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
-          <Typography variant="h6" component="h3">
-            {event.type}
-          </Typography>
-          <Typography>{event.description}</Typography>
-          {event.changeRequest && renderChangeRequestLink(event.changeRequest)}
-        </Paper>
-      </TimelineContent>
-    </TimelineItem>
-  );
 
   if (loading) {
     return (

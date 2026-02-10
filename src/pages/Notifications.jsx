@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -8,7 +7,6 @@ import {
   ListItem,
   ListItemText,
   IconButton,
-  Divider,
   Chip,
   CircularProgress,
   Alert,
@@ -162,7 +160,6 @@ const NotificationItem = ({ notification, onDelete, onAddToExternal }) => {
 };
 
 const Notifications = () => {
-  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -202,14 +199,6 @@ const Notifications = () => {
   const fetchNotifications = () => {
     const storedNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
     setNotifications(storedNotifications);
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short'
-    }).format(date);
   };
 
   const handleAddToExternalObjects = (notification) => {
