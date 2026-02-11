@@ -12,7 +12,9 @@ import {
   Typography,
   Select,
   MenuItem,
-  FormControl
+  FormControl,
+  Avatar,
+  Button
 } from '@mui/material';
 import {
   Storage as DatabaseIcon,
@@ -26,11 +28,13 @@ import {
   Flight,
   Business,
   LocalPostOffice,
-  AccountBalance
+  AccountBalance,
+  Logout as LogoutIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Logo from './Logo'; // Import the Logo component
 import { validateSettings } from '../utils/settingsValidator';
+import { getAuthClient, logout } from '../auth/keycloak';
 
 const THEMES = {
   SHIPPER: { 
@@ -101,6 +105,8 @@ const Sidebar = ({ open, toggleDrawer }) => {
     localStorage.getItem('userRole') || 'SHIPPER'
   );
   const [settingsValid, setSettingsValid] = useState(false);
+  const [authDisplayName, setAuthDisplayName] = useState('User');
+  const [authUsername, setAuthUsername] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -108,6 +114,31 @@ const Sidebar = ({ open, toggleDrawer }) => {
     const { isValid } = validateSettings();
     setSettingsValid(isValid);
   }, []);
+
+  useEffect(() => {
+    const refreshAuthInfo = () => {
+      try {
+        const authClient = getAuthClient();
+        const parsed = authClient.tokenParsed || {};
+        const displayName = parsed.name || parsed.preferred_username || parsed.email || 'User';
+        const username = parsed.preferred_username || parsed.email || '';
+
+        setAuthDisplayName(displayName);
+        setAuthUsername(username);
+      } catch {
+        setAuthDisplayName('User');
+        setAuthUsername('');
+      }
+    };
+
+    refreshAuthInfo();
+    const interval = setInterval(() => {
+      refreshAuthInfo();
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+  const userInitial = (authDisplayName || 'U').trim().charAt(0).toUpperCase();
 
   const handleThemeChange = (event) => {
     const newTheme = event.target.value;
@@ -137,7 +168,9 @@ const Sidebar = ({ open, toggleDrawer }) => {
           transition: 'width 0.2s ease-in-out',
           overflowX: 'hidden',
           backgroundColor: THEMES[selectedTheme].color,
-          color: 'white'
+          color: 'white',
+          display: 'flex',
+          flexDirection: 'column'
         }
       }}
     >
@@ -275,52 +308,113 @@ const Sidebar = ({ open, toggleDrawer }) => {
         </Box>
       )}
 
-      <List>
-        {menuItems.map((item) => (
-          <ListItem 
-            key={item.text} 
-            disablePadding 
-            sx={{ display: 'block' }}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <List>
+          {menuItems.map((item) => (
+            <ListItem 
+              key={item.text} 
+              disablePadding 
+              sx={{ display: 'block' }}
+            >
+              <ListItemButton
+                sx={{
+                  minHeight: 48,
+                  justifyContent: open ? 'initial' : 'center',
+                  px: 2.5,
+                  backgroundColor: 
+                    location.pathname === item.path 
+                      ? 'rgba(255, 255, 255, 0.08)'
+                      : 'transparent',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.12)'
+                  }
+                }}
+                onClick={() => navigate(item.path)}
+              >
+                <ListItemIcon
+                  sx={{
+                    minWidth: 0,
+                    mr: open ? 2 : 'auto',
+                    justifyContent: 'center',
+                    color: 'white'
+                  }}
+                >
+                  {item.icon}
+                </ListItemIcon>
+                <ListItemText 
+                  primary={item.text} 
+                  sx={{ 
+                    opacity: open ? 1 : 0,
+                    '& .MuiListItemText-primary': {
+                      color: 'white',
+                      fontWeight: location.pathname === item.path ? 600 : 400
+                    }
+                  }} 
+                />
+              </ListItemButton>
+            </ListItem>
+          ))}
+        </List>
+      </Box>
+
+      <Divider sx={{ backgroundColor: 'rgba(255, 255, 255, 0.12)' }} />
+      <Box sx={{ p: open ? 1.5 : 0.75 }}>
+        {open ? (
+          <Box
+            sx={{
+              borderRadius: 2,
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.16)',
+              p: 1.5
+            }}
           >
-            <ListItemButton
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1.25 }}>
+              <Avatar sx={{ width: 36, height: 36, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}>
+                {userInitial}
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 700, color: 'white' }} noWrap>
+                  {authDisplayName}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }} noWrap>
+                  {authUsername ? `Logged as ${authUsername}` : 'Logged in'}
+                </Typography>
+              </Box>
+            </Box>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<LogoutIcon />}
+              onClick={logout}
               sx={{
-                minHeight: 48,
-                justifyContent: open ? 'initial' : 'center',
-                px: 2.5,
-                backgroundColor: 
-                  location.pathname === item.path 
-                    ? 'rgba(255, 255, 255, 0.08)'
-                    : 'transparent',
+                color: 'white',
+                borderColor: 'rgba(255,255,255,0.35)',
                 '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.12)'
+                  borderColor: 'rgba(255,255,255,0.6)',
+                  backgroundColor: 'rgba(255,255,255,0.12)'
                 }
               }}
-              onClick={() => navigate(item.path)}
             >
-              <ListItemIcon
-                sx={{
-                  minWidth: 0,
-                  mr: open ? 2 : 'auto',
-                  justifyContent: 'center',
-                  color: 'white'
-                }}
-              >
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText 
-                primary={item.text} 
-                sx={{ 
-                  opacity: open ? 1 : 0,
-                  '& .MuiListItemText-primary': {
-                    color: 'white',
-                    fontWeight: location.pathname === item.path ? 600 : 400
-                  }
-                }} 
-              />
-            </ListItemButton>
-          </ListItem>
-        ))}
-      </List>
+              Sign Out
+            </Button>
+          </Box>
+        ) : (
+          <IconButton
+            onClick={logout}
+            sx={{
+              width: '100%',
+              color: 'white',
+              borderRadius: 1.5,
+              '&:hover': {
+                backgroundColor: 'rgba(255,255,255,0.12)'
+              }
+            }}
+            title={`Logged as ${authUsername || authDisplayName}`}
+          >
+            <LogoutIcon />
+          </IconButton>
+        )}
+      </Box>
     </Drawer>
   );
 };
