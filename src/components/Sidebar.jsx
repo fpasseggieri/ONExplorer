@@ -19,7 +19,6 @@ import {
   Settings as SettingsIcon,
   Notifications as NotificationsIcon,
   Send as SendIcon,
-  Edit as EditIcon,
   ChevronLeft as ChevronLeftIcon,
   Menu as MenuIcon,
   Add as AddIcon,
@@ -120,7 +119,6 @@ const Sidebar = ({ open, toggleDrawer }) => {
     { text: 'Database', icon: <DatabaseIcon />, path: '/' },
     ...(settingsValid ? [
       { text: 'Create Object', icon: <AddIcon />, path: '/logistics-objects/create' },
-      { text: 'Edit Object', icon: <EditIcon />, path: '/edit' },
       { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions' },
     ] : []),
     { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications' },

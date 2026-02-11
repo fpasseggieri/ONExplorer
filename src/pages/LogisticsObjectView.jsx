@@ -35,6 +35,7 @@ import {
   
 import {
   ArrowBack as ArrowBackIcon,
+  Refresh as RefreshIcon,
   LocalShipping as LocalShippingIcon,
   Description as DescriptionIcon,
   Send as SendIcon,
@@ -429,10 +430,9 @@ const LogisticsObjectView = () => {
     navigate('/');
   };
 
-  // Update the handleRefresh function to fetch both object data and events
+  // Refresh object details and related sections in place
   const handleRefresh = async () => {
-    await fetchObjectData();
-    await fetchEvents();
+    await Promise.all([fetchObjectData(), fetchEvents(), fetchAuditTrail()]);
   };
 
   const handleSendEvent = async () => {
@@ -938,15 +938,26 @@ const LogisticsObjectView = () => {
           >
             Back to Database
           </Button>
-          {isExternalObject && (
-            <Chip
-              label="External Object"
-              color="warning"
-              icon={<InfoIcon />}
-              sx={{ ml: 2 }}
-              title={`Server: ${serverUrl}`}
-            />
-          )}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<RefreshIcon />}
+              onClick={handleRefresh}
+              disabled={loading || loadingEvents || loadingAuditTrail}
+            >
+              Refresh
+            </Button>
+            {isExternalObject && (
+              <Chip
+                label="External Object"
+                color="warning"
+                icon={<InfoIcon />}
+                sx={{ ml: 1 }}
+                title={`Server: ${serverUrl}`}
+              />
+            )}
+          </Box>
         </Box>
         
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
