@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Box, CssBaseline } from '@mui/material';
+import { Box, CssBaseline, CircularProgress, Alert, Button } from '@mui/material';
 import Sidebar from './components/Sidebar';
 import Database from './pages/Database';
 import LogisticsObjectView from './pages/LogisticsObjectView';
@@ -12,9 +12,12 @@ import Changes from './pages/Changes';
 import ChangeRequestView from './pages/ChangeRequestView';
 import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
+import { initAuth } from './auth/keycloak';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
+  const [authInitializing, setAuthInitializing] = React.useState(true);
+  const [authError, setAuthError] = React.useState(null);
 
   // Calculate the server port based on the React app's port
   const getServerPort = () => {
@@ -23,89 +26,141 @@ function App() {
   };
 
   useEffect(() => {
-    const serverPort = getServerPort();
-    const host = window.location.hostname || 'localhost';
-    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-    const eventSource = new EventSource(`${protocol}//${host}:${serverPort}/notifyServer`);
-    
-    eventSource.onmessage = (event) => {
+    let eventSource;
+    let mounted = true;
+
+    const bootstrap = async () => {
       try {
-        if (event.data.startsWith('Connected')) {
-          console.log('SSE Connection established');
-          return;
-        }
-        
-        const jsonData = JSON.parse(event.data);
-        const graphData = jsonData['@graph'] || [jsonData];
-        
-        const notificationObject = graphData.find(item => 
-          item['@id'] && item['@id'].includes('/notifications/')
-        );
+        await initAuth();
+        if (!mounted) return;
+        setAuthError(null);
 
-        if (notificationObject) {
-          const logisticsObjectId = notificationObject.hasLogisticsObject['@id'].split('/').pop();
-          
-          const eventType = notificationObject.hasEventType['@id'].split('#').pop();
-          const validEventTypes = [
-            'LOGISTICS_OBJECT_CREATED',
-            'LOGISTICS_OBJECT_UPDATED',
-            'LOGISTICS_EVENT_RECEIVED',
-            'CHANGE_REQUEST_PENDING',
-            'CHANGE_REQUEST_ACCEPTED',
-            'CHANGE_REQUEST_REJECTED',
-            'CHANGE_REQUEST_FAILED',
-            'CHANGE_REQUEST_REVOKED',
-            'ACCESS_DELEGATION_REQUEST_PENDING',
-            'ACCESS_DELEGATION_REQUEST_ACCEPTED',
-            'ACCESS_DELEGATION_REQUEST_REJECTED',
-            'ACCESS_DELEGATION_REQUEST_FAILED',
-            'ACCESS_DELEGATION_REQUEST_REVOKED',
-            'SUBSCRIPTION_REQUEST_PENDING',
-            'SUBSCRIPTION_REQUEST_ACCEPTED',
-            'SUBSCRIPTION_REQUEST_REJECTED',
-            'SUBSCRIPTION_REQUEST_FAILED',
-            'SUBSCRIPTION_REQUEST_REVOKED'
-          ];
-          
-          if (!validEventTypes.includes(eventType)) {
-            console.warn('Unknown event type:', eventType);
-            return;
-          }
+        const serverPort = getServerPort();
+        const host = window.location.hostname || 'localhost';
+        const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+        eventSource = new EventSource(`${protocol}//${host}:${serverPort}/notifyServer`);
+        
+        eventSource.onmessage = (event) => {
+          try {
+            if (event.data.startsWith('Connected')) {
+              console.log('SSE Connection established');
+              return;
+            }
+            
+            const jsonData = JSON.parse(event.data);
+            const graphData = jsonData['@graph'] || [jsonData];
+            
+            const notificationObject = graphData.find(item => 
+              item['@id'] && item['@id'].includes('/notifications/')
+            );
 
-          const processedNotification = {
-            id: notificationObject['@id'],
-            eventType: eventType,
-            logisticsObject: notificationObject.hasLogisticsObject['@id'],
-            logisticsObjectType: notificationObject.hasLogisticsObjectType['@value'],
-            timestamp: new Date().toISOString(),
-            title: `Logistics Object ${logisticsObjectId}`
-          };
-          
-          const storedNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
-          if (!storedNotifications.some(n => n.id === processedNotification.id)) {
-            const updatedNotifications = [...storedNotifications, processedNotification];
-            localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
-            console.log('Processed notification:', processedNotification);
+            if (notificationObject) {
+              const logisticsObjectId = notificationObject.hasLogisticsObject['@id'].split('/').pop();
+              
+              const eventType = notificationObject.hasEventType['@id'].split('#').pop();
+              const validEventTypes = [
+                'LOGISTICS_OBJECT_CREATED',
+                'LOGISTICS_OBJECT_UPDATED',
+                'LOGISTICS_EVENT_RECEIVED',
+                'CHANGE_REQUEST_PENDING',
+                'CHANGE_REQUEST_ACCEPTED',
+                'CHANGE_REQUEST_REJECTED',
+                'CHANGE_REQUEST_FAILED',
+                'CHANGE_REQUEST_REVOKED',
+                'ACCESS_DELEGATION_REQUEST_PENDING',
+                'ACCESS_DELEGATION_REQUEST_ACCEPTED',
+                'ACCESS_DELEGATION_REQUEST_REJECTED',
+                'ACCESS_DELEGATION_REQUEST_FAILED',
+                'ACCESS_DELEGATION_REQUEST_REVOKED',
+                'SUBSCRIPTION_REQUEST_PENDING',
+                'SUBSCRIPTION_REQUEST_ACCEPTED',
+                'SUBSCRIPTION_REQUEST_REJECTED',
+                'SUBSCRIPTION_REQUEST_FAILED',
+                'SUBSCRIPTION_REQUEST_REVOKED'
+              ];
+              
+              if (!validEventTypes.includes(eventType)) {
+                console.warn('Unknown event type:', eventType);
+                return;
+              }
+
+              const processedNotification = {
+                id: notificationObject['@id'],
+                eventType: eventType,
+                logisticsObject: notificationObject.hasLogisticsObject['@id'],
+                logisticsObjectType: notificationObject.hasLogisticsObjectType['@value'],
+                timestamp: new Date().toISOString(),
+                title: `Logistics Object ${logisticsObjectId}`
+              };
+              
+              const storedNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+              if (!storedNotifications.some(n => n.id === processedNotification.id)) {
+                const updatedNotifications = [...storedNotifications, processedNotification];
+                localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
+                console.log('Processed notification:', processedNotification);
+              }
+            }
+          } catch (error) {
+            console.error('Error processing message:', error);
+            console.error('Raw event data:', event.data);
           }
-        }
+        };
+        
+        eventSource.onerror = (error) => {
+          console.error('EventSource failed:', error);
+        };
       } catch (error) {
-        console.error('Error processing message:', error);
-        console.error('Raw event data:', event.data);
+        console.error('Authentication init failed:', error);
+        if (mounted) {
+          setAuthError(error.message || 'Authentication failed');
+        }
+      } finally {
+        if (mounted) {
+          setAuthInitializing(false);
+        }
       }
     };
-    
-    eventSource.onerror = (error) => {
-      console.error('EventSource failed:', error);
-    };
+
+    bootstrap();
     
     return () => {
-      eventSource.close();
+      mounted = false;
+      if (eventSource) {
+        eventSource.close();
+      }
     };
   }, []);
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
   };
+
+  if (authInitializing) {
+    return (
+      <Box sx={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (authError) {
+    return (
+      <Box sx={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', p: 3 }}>
+        <Box sx={{ maxWidth: 640 }}>
+          <Alert
+            severity="error"
+            action={
+              <Button color="inherit" size="small" onClick={() => window.location.reload()}>
+                Retry
+              </Button>
+            }
+          >
+            {authError}
+          </Alert>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Router>

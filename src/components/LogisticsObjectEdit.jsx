@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import LogisticsObjectForm from './LogisticsObjectForm';
 import jsonld from 'jsonld';
+import { getAccessToken } from '../auth/keycloak';
 
 const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) => {
   const [loading, setLoading] = useState(true);
@@ -43,11 +44,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
         }
 
         const isExternalObject = targetBaseUrl !== serverDetails.baseUrl;
-        const token = isExternalObject
+        const resolvedToken = isExternalObject
           ? serverDetails.externalTokens?.[targetBaseUrl]
-          : serverDetails.token;
+          : (serverDetails.token || await getAccessToken());
 
-        if (!token) {
+        if (!resolvedToken) {
           throw new Error(`No authentication token available for ${targetBaseUrl}`);
         }
 
@@ -55,7 +56,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
         const response = await fetch(`${targetBaseUrl}${objectPath}`, {
           headers: {
             'Accept': 'application/ld+json',
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${resolvedToken}`
           }
         });
 
@@ -453,11 +454,12 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
       };
 
       // Submit the changes
+      const resolvedToken = serverDetails.token || await getAccessToken();
       const response = await fetch(`${serverDetails.baseUrl}/logistics-objects/${objectId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/ld+json',
-          'Authorization': `Bearer ${serverDetails.token}`
+          'Authorization': `Bearer ${resolvedToken}`
         },
         body: JSON.stringify(changeRequest)
       });

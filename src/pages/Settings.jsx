@@ -30,8 +30,7 @@ import {
 const Settings = () => {
   // Internal API settings
   const [internalSettings, setInternalSettings] = useState({
-    baseUrl: localStorage.getItem('baseUrl') || '',
-    token: localStorage.getItem('token') || ''
+    baseUrl: localStorage.getItem('baseUrl') || ''
   });
 
   // External servers
@@ -58,7 +57,6 @@ const Settings = () => {
   const handleInternalSave = () => {
     try {
       localStorage.setItem('baseUrl', internalSettings.baseUrl.trim());
-      localStorage.setItem('token', internalSettings.token.trim());
       setError(null);
       // Navigate to home page after saving settings
       window.location.href = '/';
@@ -137,6 +135,9 @@ const Settings = () => {
       {/* Internal API Settings */}
       <Paper sx={{ p: 3, mb: 4 }}>
         <Typography variant="h6" sx={{ mb: 3 }}>Internal API Settings</Typography>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Authentication is managed via Keycloak sign-in (Authorization Code + PKCE). Only the API base URL is configured here.
+        </Alert>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField
             label="Base URL"
@@ -147,17 +148,6 @@ const Settings = () => {
             }))}
             fullWidth
             helperText="The base URL of your ONE Record server"
-          />
-          <TextField
-            label="JWT Token"
-            value={internalSettings.token}
-            onChange={(e) => setInternalSettings(prev => ({
-              ...prev,
-              token: e.target.value
-            }))}
-            fullWidth
-            type="password"
-            helperText="Your JWT authentication token"
           />
           {error && (
             <Alert severity="error" sx={{ mt: 2 }}>

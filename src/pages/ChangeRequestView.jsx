@@ -26,6 +26,7 @@ import {
   Notifications as NotificationsIcon
 } from '@mui/icons-material';
 import jsonld from 'jsonld';
+import { getAccessToken } from '../auth/keycloak';
 
 const ChangeRequestView = () => {
   const { id } = useParams();
@@ -36,10 +37,10 @@ const ChangeRequestView = () => {
   const [error, setError] = useState(null);
 
   // Get server details from location state or use defaults
-  const serverDetails = {
+  const serverDetails = useMemo(() => ({
     baseUrl: location.state?.serverUrl || localStorage.getItem('baseUrl'),
-    token: location.state?.token || localStorage.getItem('token')
-  };
+    token: location.state?.token
+  }), [location.state?.serverUrl, location.state?.token]);
 
   const frame = useMemo(() => ({
     "@context": {
@@ -53,10 +54,11 @@ const ChangeRequestView = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
+        const requestToken = serverDetails.token || await getAccessToken();
         const response = await fetch(`${serverDetails.baseUrl}/action-requests/${id}`, {
           method: 'GET',
           headers: {
-            'Authorization': `Bearer ${serverDetails.token}`,
+            'Authorization': `Bearer ${requestToken}`,
             'Accept': 'application/ld+json'
           }
         });

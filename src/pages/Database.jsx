@@ -154,8 +154,7 @@ const Database = () => {
     navigate(`/logistics-objects/${item.id}`, {
       state: { 
         isExternal: false,
-        serverUrl: localStorage.getItem('baseUrl'),
-        token: localStorage.getItem('token')
+        serverUrl: localStorage.getItem('baseUrl')
       }
     });
   };
@@ -176,8 +175,7 @@ const Database = () => {
       // Use internal server config
       const baseUrl = localStorage.getItem('baseUrl');
       serverDetails = {
-        baseUrl,
-        token: localStorage.getItem('token')
+        baseUrl
       };
     }
 

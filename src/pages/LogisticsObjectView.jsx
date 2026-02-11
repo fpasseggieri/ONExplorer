@@ -48,6 +48,7 @@ import jsonld from 'jsonld';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
+import { getAccessToken } from '../auth/keycloak';
 
 
 // Update EVENT_TYPES constant with standardized codes
@@ -138,6 +139,13 @@ const LogisticsObjectView = () => {
   const serverUrl = location.state?.serverUrl;
   const token = location.state?.token;
 
+  const getRequestToken = useCallback(async () => {
+    if (token) {
+      return token;
+    }
+    return getAccessToken();
+  }, [token]);
+
   // Add this to determine if the object is external
   const isExternalObject = serverUrl !== localStorage.getItem('baseUrl');
 
@@ -145,15 +153,16 @@ const LogisticsObjectView = () => {
     try {
       setLoading(true);
       
-      if (!serverUrl || !token) {
+      if (!serverUrl) {
         throw new Error('Server configuration not found');
       }
+      const requestToken = await getRequestToken();
 
       const response = await fetch(`${serverUrl}/logistics-objects/${id}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/ld+json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${requestToken}`
         }
       });
 
@@ -218,15 +227,16 @@ const LogisticsObjectView = () => {
     } finally {
       setLoading(false);
     }
-  }, [id, navigate, serverUrl, token]);
+  }, [getRequestToken, id, navigate, serverUrl]);
 
   const fetchEvents = useCallback(async () => {
     try {
       setLoadingEvents(true);
+      const requestToken = await getRequestToken();
       const response = await fetch(`${serverUrl}/logistics-objects/${id}/logistics-events`, {
         headers: {
           'Accept': 'application/ld+json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${requestToken}`
         }
       });
 
@@ -287,15 +297,16 @@ const LogisticsObjectView = () => {
     } finally {
       setLoadingEvents(false);
     }
-  }, [id, serverUrl, token]);
+  }, [getRequestToken, id, serverUrl]);
 
   const fetchAuditTrail = useCallback(async () => {
     try {
       setLoadingAuditTrail(true);
+      const requestToken = await getRequestToken();
       const response = await fetch(`${serverUrl}/logistics-objects/${id}/audit-trail`, {
         headers: {
           'Accept': 'application/ld+json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${requestToken}`
         }
       });
       const data = await response.json();
@@ -305,17 +316,17 @@ const LogisticsObjectView = () => {
     } finally {
       setLoadingAuditTrail(false);
     }
-  }, [id, serverUrl, token]);
+  }, [getRequestToken, id, serverUrl]);
 
   useEffect(() => {
-    if (!serverUrl || !token) {
+    if (!serverUrl) {
       setError('Server configuration not found');
       return;
     }
     fetchObjectData();
     fetchEvents();
     fetchAuditTrail();
-  }, [fetchAuditTrail, fetchEvents, fetchObjectData, serverUrl, token]);
+  }, [fetchAuditTrail, fetchEvents, fetchObjectData, serverUrl]);
 
   const handleBack = () => {
     navigate('/');
@@ -330,13 +341,14 @@ const LogisticsObjectView = () => {
   const handleSendEvent = async () => {
     try {
       setSendingEvent(true);
+      const requestToken = await getRequestToken();
       const eventJsonLd = formatEventToJsonLd(eventData, id);
       
       const response = await fetch(`${serverUrl}/logistics-objects/${id}/logistics-events`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/ld+json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${requestToken}`
         },
         body: JSON.stringify(eventJsonLd)
       });
@@ -740,8 +752,7 @@ const LogisticsObjectView = () => {
     // Get all configured servers
     const externalServers = JSON.parse(localStorage.getItem('externalServers') || '[]');
     const currentServer = {
-      baseUrl: localStorage.getItem('baseUrl'),
-      token: localStorage.getItem('token')
+      baseUrl: localStorage.getItem('baseUrl')
     };
     
     // Check if URL matches any configured server
