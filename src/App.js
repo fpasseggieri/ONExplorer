@@ -178,6 +178,7 @@ function App() {
             <Route path="/logistics-objects/create" element={<CreateLogisticsObject />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/subscriptions" element={<Subscriptions />} />
+            <Route path="/subscription-requests/:serverPort/:tenant/action-requests/:id" element={<SubscriptionRequestView />} />
             <Route path="/changes" element={<Changes />} />
             <Route path="/logistics-objects/:id" element={<LogisticsObjectView />} />
             <Route path="/subscription-requests/:id" element={<SubscriptionRequestView />} />
