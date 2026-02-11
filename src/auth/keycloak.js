@@ -1,11 +1,12 @@
 import Keycloak from 'keycloak-js';
+import { getEnv } from '../utils/env';
 
 let initialized = false;
 let keycloak;
 let initPromise;
 
 const getRequiredEnv = (name) => {
-  const value = process.env[name];
+  const value = getEnv(name);
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }

@@ -13,8 +13,14 @@ import ChangeRequestView from './pages/ChangeRequestView';
 import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
 import { initAuth } from './auth/keycloak';
+import { initializeRuntimeSettings } from './utils/runtimeSettings';
 
 function App() {
+  const runtimeSettingsInitialized = React.useRef(false);
+  if (!runtimeSettingsInitialized.current) {
+    initializeRuntimeSettings();
+    runtimeSettingsInitialized.current = true;
+  }
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [authInitializing, setAuthInitializing] = React.useState(true);
   const [authError, setAuthError] = React.useState(null);
