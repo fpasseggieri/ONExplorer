@@ -50,6 +50,7 @@ import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import { getAccessToken } from '../auth/keycloak';
+import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
 
 
 // Update EVENT_TYPES constant with standardized codes
@@ -193,12 +194,21 @@ const LogisticsObjectView = () => {
   const serverUrl = location.state?.serverUrl || localStorage.getItem('baseUrl');
   const token = location.state?.token;
 
-  const getRequestToken = useCallback(async () => {
+  const getRequestToken = useCallback(async (targetBaseUrl = serverUrl) => {
+    const internalBaseUrl = localStorage.getItem('baseUrl');
+
+    // Backward compatibility for navigation state that still passes a token.
     if (token) {
       return token;
     }
-    return getAccessToken();
-  }, [token]);
+
+    if (!targetBaseUrl || targetBaseUrl === internalBaseUrl) {
+      return getAccessToken();
+    }
+
+    const externalServer = getExternalServerByBaseUrl(targetBaseUrl);
+    return getExternalAccessToken(externalServer || targetBaseUrl);
+  }, [serverUrl, token]);
 
   // Add this to determine if the object is external
   const isExternalObject = serverUrl !== localStorage.getItem('baseUrl');
@@ -500,16 +510,13 @@ const LogisticsObjectView = () => {
       if (Object.keys(value).length === 1 && value['@id']) {
         if (isLogisticsObjectLink(value['@id'])) {
           const externalServerUrl = new URL(value['@id']).origin;
-          const externalServers = JSON.parse(localStorage.getItem('externalServers') || '[]');
-          const serverConfig = externalServers.find(s => s.baseUrl === externalServerUrl);
           return (
             <Button
             onClick={() => {
               navigate(`/logistics-objects/${value['@id'].split('/').pop()}`, {
                 replace: false,
                 state: { 
-                  serverUrl: externalServerUrl || serverUrl,
-                  token: serverConfig?.token || token
+                  serverUrl: externalServerUrl || serverUrl
                 }
               });
               window.location.reload();
@@ -871,8 +878,7 @@ const LogisticsObjectView = () => {
         component={RouterLink}
         to={`/changes-request/${changeRequestId}`}
         state={serverDetails ? {
-          serverUrl: serverDetails.baseUrl,
-          token: serverDetails.token
+          serverUrl: serverDetails.baseUrl
         } : undefined}
         startIcon={<DescriptionIcon />}
         sx={{ textTransform: 'none' }}

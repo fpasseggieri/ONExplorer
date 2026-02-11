@@ -1,4 +1,5 @@
 import { getAccessToken } from '../auth/keycloak';
+import { getExternalAccessToken, getExternalServerByBaseUrl } from './externalAuth';
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -59,6 +60,10 @@ export const apiCall = async (endpoint, options = {}) => {
 
   if (!response.ok) {
     throw new ApiError('API request failed', response.status);
+  }
+
+  if (options.returnFullResponse) {
+    return response;
   }
 
   // Don't try to parse JSON for PATCH requests or 204 responses
@@ -130,12 +135,15 @@ export const submitChangeRequest = async (objectId, objectType, operations, revi
 };
 
 export const externalApiCall = async (baseUrl, endpoint, options = {}) => {
+  const serverConfig = options.server || getExternalServerByBaseUrl(baseUrl);
+  const externalToken = await getExternalAccessToken(serverConfig || baseUrl);
+
   const response = await fetch(`${baseUrl}${endpoint}`, {
     ...options,
     headers: {
       'Accept': 'application/ld+json; version=2.2.0',
       'Content-Type': 'application/ld+json; version=2.2.0',
-      'Authorization': `Bearer ${options.server?.token}`,
+      'Authorization': `Bearer ${externalToken}`,
       ...options.headers
     }
   });

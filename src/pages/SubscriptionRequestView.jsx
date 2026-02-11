@@ -23,7 +23,7 @@ import {
   AccountCircle as AccountCircleIcon
 } from '@mui/icons-material';
 import { apiCall, externalApiCall } from '../utils/api';
-import { getServers } from '../utils/settings'; // Ensure this import is correct
+import { getExternalServerById } from '../utils/externalAuth';
 import jsonld from 'jsonld';
 import { Link as RouterLink } from 'react-router-dom'; // Import RouterLink if used
 
@@ -71,17 +71,14 @@ const SubscriptionRequestView = () => {
         
         if (serverId) {
           // External server request
-          const servers = getServers();
-          const selectedServer = servers.find(server => server.id === serverId);
+          const selectedServer = getExternalServerById(serverId);
           if (!selectedServer) {
             throw new Error('Server not found');
           }
           console.log('External server request:', selectedServer.baseUrl); // Debug log
           response = await externalApiCall(selectedServer.baseUrl, `/action-requests/${id}`, {
             method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${selectedServer.token}`
-            }
+            server: selectedServer
           });
         } else {
           // Internal server request

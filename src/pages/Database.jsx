@@ -169,7 +169,7 @@ const Database = () => {
       
       serverDetails = {
         baseUrl: item.server,
-        token: serverConfig?.token
+        serverId: serverConfig?.id
       };
     } else {
       // Use internal server config
@@ -455,15 +455,10 @@ const Database = () => {
                           <IconButton
                             size="small"
                             onClick={() => {
-                              // Get the external server config from localStorage
-                              const externalServers = JSON.parse(localStorage.getItem('externalServers') || '[]');
-                              const serverConfig = externalServers.find(s => s.baseUrl === row.server);
-                              
                               navigate(`/logistics-objects/${row.id}`, {
                                 state: { 
                                   isExternal: true,
-                                  serverUrl: row.server,
-                                  token: serverConfig?.token
+                                  serverUrl: row.server
                                 }
                               });
                             }}

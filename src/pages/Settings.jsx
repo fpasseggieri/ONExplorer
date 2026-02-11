@@ -26,6 +26,24 @@ import {
   Delete as DeleteIcon,
   Edit as EditIcon
 } from '@mui/icons-material';
+import { getExternalAccessToken } from '../utils/externalAuth';
+
+const normalizeServer = (server) => {
+  const name = (server?.name || '').trim();
+  const baseUrl = (server?.baseUrl || '').trim();
+  const fallbackId = `server-${encodeURIComponent(name || baseUrl || 'external')}`;
+
+  return {
+    id: (server?.id || fallbackId).toString(),
+    name,
+    baseUrl,
+  oauthTokenEndpoint: (server?.oauthTokenEndpoint || '').trim(),
+  oauthClientId: (server?.oauthClientId || '').trim(),
+  oauthClientSecret: (server?.oauthClientSecret || '').trim(),
+  // Keep legacy static token support if already configured.
+  token: (server?.token || '').trim()
+  };
+};
 
 const Settings = () => {
   // Internal API settings
@@ -36,7 +54,15 @@ const Settings = () => {
   // External servers
   const [servers, setServers] = useState(() => {
     const savedServers = localStorage.getItem('externalServers');
-    return savedServers ? JSON.parse(savedServers) : [];
+    if (!savedServers) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(savedServers);
+      return Array.isArray(parsed) ? parsed.map(normalizeServer) : [];
+    } catch {
+      return [];
+    }
   });
 
   // Dialog states
@@ -45,6 +71,9 @@ const Settings = () => {
   const [newServer, setNewServer] = useState({
     name: '',
     baseUrl: '',
+    oauthTokenEndpoint: '',
+    oauthClientId: '',
+    oauthClientSecret: '',
     token: '',
     id: ''
   });
@@ -52,6 +81,8 @@ const Settings = () => {
   // Error states
   const [error, setError] = useState(null);
   const [dialogError, setDialogError] = useState(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState(null);
 
   // Save internal settings
   const handleInternalSave = () => {
@@ -67,16 +98,16 @@ const Settings = () => {
 
   // Save external servers
   const handleServerSave = () => {
-    if (!newServer.name || !newServer.baseUrl || !newServer.token) {
-      setDialogError('All fields are required');
+    if (!newServer.name || !newServer.baseUrl || !newServer.oauthTokenEndpoint || !newServer.oauthClientId || !newServer.oauthClientSecret) {
+      setDialogError('All OAuth fields are required');
       return;
     }
 
     try {
-      const serverToSave = {
+      const serverToSave = normalizeServer({
         ...newServer,
-        id: editingServer !== null ? newServer.id : Date.now().toString() // Generate new ID for new servers
-      };
+        id: editingServer !== null ? newServer.id : Date.now().toString()
+      });
 
       let updatedServers;
       if (editingServer !== null) {
@@ -101,17 +132,63 @@ const Settings = () => {
     setServers(updatedServers);
   };
 
+  const handleTestConnection = async () => {
+    if (!newServer.name || !newServer.baseUrl || !newServer.oauthTokenEndpoint || !newServer.oauthClientId || !newServer.oauthClientSecret) {
+      setDialogError('Fill all OAuth fields before testing');
+      setTestResult(null);
+      return;
+    }
+
+    try {
+      setTestingConnection(true);
+      setDialogError(null);
+      setTestResult(null);
+
+      const token = await getExternalAccessToken({
+        ...newServer,
+        id: newServer.id || `test-${Date.now()}`
+      });
+
+      if (!token) {
+        throw new Error('No access token returned');
+      }
+
+      setTestResult({
+        type: 'success',
+        message: 'Connection successful: access token generated.'
+      });
+    } catch (err) {
+      setTestResult({
+        type: 'error',
+        message: `Connection failed: ${err.message}`
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   const handleEditServer = (index) => {
     setEditingServer(index);
-    setNewServer(servers[index]);
+    setNewServer(normalizeServer(servers[index]));
+    setDialogError(null);
+    setTestResult(null);
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingServer(null);
-    setNewServer({ name: '', baseUrl: '', token: '', id: '' });
+    setNewServer({
+      name: '',
+      baseUrl: '',
+      oauthTokenEndpoint: '',
+      oauthClientId: '',
+      oauthClientSecret: '',
+      token: '',
+      id: ''
+    });
     setDialogError(null);
+    setTestResult(null);
   };
 
   return (
@@ -175,7 +252,11 @@ const Settings = () => {
           <Button
             startIcon={<AddIcon />}
             variant="contained"
-            onClick={() => setOpenDialog(true)}
+            onClick={() => {
+              setDialogError(null);
+              setTestResult(null);
+              setOpenDialog(true);
+            }}
           >
             Add Server
           </Button>
@@ -187,6 +268,7 @@ const Settings = () => {
               <TableRow>
                 <TableCell>Name</TableCell>
                 <TableCell>Base URL</TableCell>
+                <TableCell>Token Endpoint</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -195,6 +277,7 @@ const Settings = () => {
                 <TableRow key={index}>
                   <TableCell>{server.name}</TableCell>
                   <TableCell>{server.baseUrl}</TableCell>
+                  <TableCell>{server.oauthTokenEndpoint || '-'}</TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 1 }}>
                       <Tooltip title="Edit">
@@ -216,7 +299,7 @@ const Settings = () => {
               ))}
               {servers.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} align="center">
+                  <TableCell colSpan={4} align="center">
                     <Typography color="textSecondary">
                       No external servers configured
                     </Typography>
@@ -245,6 +328,14 @@ const Settings = () => {
                 {dialogError}
               </Alert>
             )}
+            {testResult && (
+              <Alert severity={testResult.type}>
+                {testResult.message}
+              </Alert>
+            )}
+            <Alert severity="info">
+              Configure OAuth client credentials. The app will generate JWT access tokens using the client credentials flow.
+            </Alert>
             <TextField
               label="Server Name"
               value={newServer.name}
@@ -266,11 +357,32 @@ const Settings = () => {
               required
             />
             <TextField
-              label="JWT Token"
-              value={newServer.token}
+              label="OAuth Token Endpoint"
+              value={newServer.oauthTokenEndpoint}
               onChange={(e) => setNewServer(prev => ({
                 ...prev,
-                token: e.target.value
+                oauthTokenEndpoint: e.target.value
+              }))}
+              fullWidth
+              required
+              helperText="Example: https://auth.partner.com/realms/onerecord/protocol/openid-connect/token"
+            />
+            <TextField
+              label="OAuth Client ID"
+              value={newServer.oauthClientId}
+              onChange={(e) => setNewServer(prev => ({
+                ...prev,
+                oauthClientId: e.target.value
+              }))}
+              fullWidth
+              required
+            />
+            <TextField
+              label="OAuth Client Secret"
+              value={newServer.oauthClientSecret}
+              onChange={(e) => setNewServer(prev => ({
+                ...prev,
+                oauthClientSecret: e.target.value
               }))}
               fullWidth
               type="password"
@@ -280,10 +392,16 @@ const Settings = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button
+            onClick={handleTestConnection}
+            disabled={testingConnection || !newServer.name || !newServer.baseUrl || !newServer.oauthTokenEndpoint || !newServer.oauthClientId || !newServer.oauthClientSecret}
+          >
+            {testingConnection ? 'Testing...' : 'Test Connection'}
+          </Button>
           <Button 
             variant="contained"
             onClick={handleServerSave}
-            disabled={!newServer.name || !newServer.baseUrl || !newServer.token}
+            disabled={testingConnection || !newServer.name || !newServer.baseUrl || !newServer.oauthTokenEndpoint || !newServer.oauthClientId || !newServer.oauthClientSecret}
           >
             {editingServer !== null ? 'Update' : 'Add'}
           </Button>

@@ -27,6 +27,7 @@ import {
 } from '@mui/icons-material';
 import jsonld from 'jsonld';
 import { getAccessToken } from '../auth/keycloak';
+import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
 
 const ChangeRequestView = () => {
   const { id } = useParams();
@@ -54,7 +55,12 @@ const ChangeRequestView = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const requestToken = serverDetails.token || await getAccessToken();
+        const internalBaseUrl = localStorage.getItem('baseUrl');
+        const requestToken = serverDetails.token
+          ? serverDetails.token
+          : serverDetails.baseUrl === internalBaseUrl
+            ? await getAccessToken()
+            : await getExternalAccessToken(getExternalServerByBaseUrl(serverDetails.baseUrl) || serverDetails.baseUrl);
         const response = await fetch(`${serverDetails.baseUrl}/action-requests/${id}`, {
           method: 'GET',
           headers: {
@@ -153,8 +159,7 @@ const ChangeRequestView = () => {
           to={`/logistics-objects/${objectId}`}
           state={{ 
             isExternal,
-            serverUrl: isExternal ? new URL(url).origin : serverDetails.baseUrl,
-            token: serverDetails.token
+            serverUrl: isExternal ? new URL(url).origin : serverDetails.baseUrl
           }}
           startIcon={<InventoryIcon />}
           sx={{ textTransform: 'none' }}
