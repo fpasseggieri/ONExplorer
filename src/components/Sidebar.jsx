@@ -124,7 +124,6 @@ const Sidebar = ({ open, toggleDrawer }) => {
       { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions' },
     ] : []),
     { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications' },
-    { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];
 
