@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Box, CssBaseline, CircularProgress, Alert, Button } from '@mui/material';
 import Sidebar from './components/Sidebar';
 import Database from './pages/Database';
@@ -23,7 +23,8 @@ function App() {
   }
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [authInitializing, setAuthInitializing] = React.useState(true);
-  const [authError, setAuthError] = React.useState(null);
+  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+  const [authWarning, setAuthWarning] = React.useState(null);
 
   // Calculate the server port based on the React app's port
   const getServerPort = () => {
@@ -37,9 +38,14 @@ function App() {
 
     const bootstrap = async () => {
       try {
-        await initAuth();
+        const authenticated = await initAuth();
         if (!mounted) return;
-        setAuthError(null);
+        setIsAuthenticated(Boolean(authenticated));
+        setAuthWarning(null);
+
+        if (!authenticated) {
+          return;
+        }
 
         const serverPort = getServerPort();
         const host = window.location.hostname || 'localhost';
@@ -118,7 +124,8 @@ function App() {
       } catch (error) {
         console.error('Authentication init failed:', error);
         if (mounted) {
-          setAuthError(error.message || 'Authentication failed');
+          setIsAuthenticated(false);
+          setAuthWarning('Keycloak is currently unavailable. You can continue in guest mode and sign in when the server is back online.');
         }
       } finally {
         if (mounted) {
@@ -149,25 +156,6 @@ function App() {
     );
   }
 
-  if (authError) {
-    return (
-      <Box sx={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', p: 3 }}>
-        <Box sx={{ maxWidth: 640 }}>
-          <Alert
-            severity="error"
-            action={
-              <Button color="inherit" size="small" onClick={() => window.location.reload()}>
-                Retry
-              </Button>
-            }
-          >
-            {authError}
-          </Alert>
-        </Box>
-      </Box>
-    );
-  }
-
   return (
     <Router>
       <Box sx={{ display: 'flex', minHeight: '100vh' }}>
@@ -175,21 +163,35 @@ function App() {
         <Sidebar 
           open={sidebarOpen} 
           toggleDrawer={toggleSidebar}
+          isAuthenticated={isAuthenticated}
         />
         <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+          {authWarning && (
+            <Alert
+              severity="warning"
+              sx={{ mb: 2 }}
+              action={
+                <Button color="inherit" size="small" onClick={() => window.location.reload()}>
+                  Retry
+                </Button>
+              }
+            >
+              {authWarning}
+            </Alert>
+          )}
           <Routes>
             <Route path="/settings" element={<Settings />} />
-            <Route path="/" element={<Database />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/logistics-objects/create" element={<CreateLogisticsObject />} />
-            <Route path="/notifications" element={<Notifications />} />
-            <Route path="/subscriptions" element={<Subscriptions />} />
-            <Route path="/subscription-requests/:serverPort/:tenant/action-requests/:id" element={<SubscriptionRequestView />} />
-            <Route path="/changes" element={<Changes />} />
-            <Route path="/logistics-objects/:id" element={<LogisticsObjectView />} />
-            <Route path="/subscription-requests/:id" element={<SubscriptionRequestView />} />
-            <Route path="/external-subscription-requests/:serverId/:id" element={<SubscriptionRequestView />} />
-            <Route path="/changes-request/:id" element={<ChangeRequestView />} />
+            <Route path="/" element={<Database isAuthenticated={isAuthenticated} />} />
+            <Route path="/dashboard" element={isAuthenticated ? <Dashboard /> : <Navigate to="/" replace />} />
+            <Route path="/logistics-objects/create" element={isAuthenticated ? <CreateLogisticsObject /> : <Navigate to="/" replace />} />
+            <Route path="/notifications" element={isAuthenticated ? <Notifications /> : <Navigate to="/" replace />} />
+            <Route path="/subscriptions" element={isAuthenticated ? <Subscriptions /> : <Navigate to="/" replace />} />
+            <Route path="/subscription-requests/:serverPort/:tenant/action-requests/:id" element={isAuthenticated ? <SubscriptionRequestView /> : <Navigate to="/" replace />} />
+            <Route path="/changes" element={isAuthenticated ? <Changes /> : <Navigate to="/" replace />} />
+            <Route path="/logistics-objects/:id" element={isAuthenticated ? <LogisticsObjectView /> : <Navigate to="/" replace />} />
+            <Route path="/subscription-requests/:id" element={isAuthenticated ? <SubscriptionRequestView /> : <Navigate to="/" replace />} />
+            <Route path="/external-subscription-requests/:serverId/:id" element={isAuthenticated ? <SubscriptionRequestView /> : <Navigate to="/" replace />} />
+            <Route path="/changes-request/:id" element={isAuthenticated ? <ChangeRequestView /> : <Navigate to="/" replace />} />
           </Routes>
         </Box>
       </Box>

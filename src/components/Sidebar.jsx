@@ -29,12 +29,13 @@ import {
   Business,
   LocalPostOffice,
   AccountBalance,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  Login as LoginIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Logo from './Logo'; // Import the Logo component
 import { validateSettings } from '../utils/settingsValidator';
-import { getAuthClient, logout } from '../auth/keycloak';
+import { getAuthClient, logout, login } from '../auth/keycloak';
 
 const THEMES = {
   SHIPPER: { 
@@ -99,7 +100,7 @@ const THEMES = {
   }
 };
 
-const Sidebar = ({ open, toggleDrawer }) => {
+const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
   // Initialize theme from localStorage or default to 'SHIPPER'
   const [selectedTheme, setSelectedTheme] = useState(() => 
     localStorage.getItem('userRole') || 'SHIPPER'
@@ -116,6 +117,12 @@ const Sidebar = ({ open, toggleDrawer }) => {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setAuthDisplayName('Guest');
+      setAuthUsername('');
+      return undefined;
+    }
+
     const refreshAuthInfo = () => {
       try {
         const authClient = getAuthClient();
@@ -137,7 +144,7 @@ const Sidebar = ({ open, toggleDrawer }) => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated]);
   const userInitial = (authDisplayName || 'U').trim().charAt(0).toUpperCase();
 
   const handleThemeChange = (event) => {
@@ -146,13 +153,25 @@ const Sidebar = ({ open, toggleDrawer }) => {
     localStorage.setItem('userRole', newTheme);
   };
 
+  const handleAuthAction = async () => {
+    try {
+      if (isAuthenticated) {
+        await logout();
+        return;
+      }
+      await login();
+    } catch (error) {
+      console.error('Authentication action failed:', error);
+    }
+  };
+
   const menuItems = [
     { text: 'Database', icon: <DatabaseIcon />, path: '/' },
     ...(settingsValid ? [
-      { text: 'Create Object', icon: <AddIcon />, path: '/logistics-objects/create' },
-      { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions' },
+      { text: 'Create Object', icon: <AddIcon />, path: '/logistics-objects/create', requiresAuth: true },
+      { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions', requiresAuth: true },
     ] : []),
-    { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications' },
+    { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications', requiresAuth: true },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];
 
@@ -310,13 +329,16 @@ const Sidebar = ({ open, toggleDrawer }) => {
 
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <List>
-          {menuItems.map((item) => (
+          {menuItems.map((item) => {
+            const disabled = Boolean(item.requiresAuth && !isAuthenticated);
+            return (
             <ListItem 
               key={item.text} 
               disablePadding 
               sx={{ display: 'block' }}
             >
               <ListItemButton
+                disabled={disabled}
                 sx={{
                   minHeight: 48,
                   justifyContent: open ? 'initial' : 'center',
@@ -329,7 +351,11 @@ const Sidebar = ({ open, toggleDrawer }) => {
                     backgroundColor: 'rgba(255, 255, 255, 0.12)'
                   }
                 }}
-                onClick={() => navigate(item.path)}
+                onClick={() => {
+                  if (!disabled) {
+                    navigate(item.path);
+                  }
+                }}
               >
                 <ListItemIcon
                   sx={{
@@ -353,7 +379,8 @@ const Sidebar = ({ open, toggleDrawer }) => {
                 />
               </ListItemButton>
             </ListItem>
-          ))}
+            );
+          })}
         </List>
       </Box>
 
@@ -377,15 +404,15 @@ const Sidebar = ({ open, toggleDrawer }) => {
                   {authDisplayName}
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }} noWrap>
-                  {authUsername ? `Logged as ${authUsername}` : 'Logged in'}
+                  {!isAuthenticated ? 'Not authenticated' : (authUsername ? `Logged as ${authUsername}` : 'Logged in')}
                 </Typography>
               </Box>
             </Box>
             <Button
               fullWidth
               variant="outlined"
-              startIcon={<LogoutIcon />}
-              onClick={logout}
+              startIcon={isAuthenticated ? <LogoutIcon /> : <LoginIcon />}
+              onClick={handleAuthAction}
               sx={{
                 color: 'white',
                 borderColor: 'rgba(255,255,255,0.35)',
@@ -395,12 +422,12 @@ const Sidebar = ({ open, toggleDrawer }) => {
                 }
               }}
             >
-              Sign Out
+              {isAuthenticated ? 'Sign Out' : 'Sign In'}
             </Button>
           </Box>
         ) : (
           <IconButton
-            onClick={logout}
+            onClick={handleAuthAction}
             sx={{
               width: '100%',
               color: 'white',
@@ -409,9 +436,9 @@ const Sidebar = ({ open, toggleDrawer }) => {
                 backgroundColor: 'rgba(255,255,255,0.12)'
               }
             }}
-            title={`Logged as ${authUsername || authDisplayName}`}
+            title={isAuthenticated ? `Logged as ${authUsername || authDisplayName}` : 'Sign in'}
           >
-            <LogoutIcon />
+            {isAuthenticated ? <LogoutIcon /> : <LoginIcon />}
           </IconButton>
         )}
       </Box>

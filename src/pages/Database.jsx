@@ -77,7 +77,7 @@ const cleanupItem = (item) => {
   };
 };
 
-const Database = () => {
+const Database = ({ isAuthenticated = true }) => {
   const navigate = useNavigate();
   const [data, setData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
@@ -100,10 +100,12 @@ const Database = () => {
   }, []);
 
   useEffect(() => {
-    if (settingsValid) {
+    if (settingsValid && isAuthenticated) {
       fetchData();
+    } else if (!isAuthenticated) {
+      setLoading(false);
     }
-  }, [settingsValid]);
+  }, [settingsValid, isAuthenticated]);
 
   useEffect(() => {
     // Load external objects from localStorage on component mount
@@ -151,6 +153,7 @@ const Database = () => {
 
   // Action Menu handlers
   const handleView = (item) => {
+    if (!isAuthenticated) return;
     navigate(`/logistics-objects/${item.id}`, {
       state: { 
         isExternal: false,
@@ -160,6 +163,7 @@ const Database = () => {
   };
 
   const handleEdit = (item, isExternal = false) => {
+    if (!isAuthenticated) return;
     let serverDetails;
     
     if (isExternal) {
@@ -225,6 +229,7 @@ const Database = () => {
   };
 
   const handleRefresh = async () => {
+    if (!isAuthenticated) return;
     try {
       setRefreshing(true);
       await fetchData();
@@ -234,6 +239,7 @@ const Database = () => {
   };
   
   const handleSubscribe = (row) => {
+    if (!isAuthenticated) return;
     setSelectedObjectForSubscription(row);
     setSubscriptionDialogOpen(true);
   };
@@ -309,7 +315,7 @@ const Database = () => {
                 variant="outlined"
                 startIcon={<RefreshIcon />}
                 onClick={handleRefresh}
-                disabled={refreshing}
+                disabled={refreshing || !isAuthenticated}
                 size="small"
               >
                 Refresh
@@ -322,6 +328,11 @@ const Database = () => {
         {error && (
           <Alert severity="error" sx={{ mb: 3 }}>
             {error}
+          </Alert>
+        )}
+        {!isAuthenticated && (
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            Authentication is unavailable. You are in guest mode and protected actions are disabled.
           </Alert>
         )}
 
@@ -375,6 +386,7 @@ const Database = () => {
                           <IconButton
                             size="small"
                             color="primary"
+                            disabled={!isAuthenticated}
                             onClick={() => handleView(row)}
                           >
                             <VisibilityIcon fontSize="small" />
@@ -384,6 +396,7 @@ const Database = () => {
                           <IconButton
                             size="small"
                             color="primary"
+                            disabled={!isAuthenticated}
                             onClick={() => handleEdit(row, false)}
                           >
                             <EditIcon fontSize="small" />
@@ -393,6 +406,7 @@ const Database = () => {
                           <IconButton
                             size="small"
                             color="primary"
+                            disabled={!isAuthenticated}
                             onClick={() => handleSubscribe(row)}
                           >
                             <MessageIcon fontSize="small" />
@@ -454,6 +468,7 @@ const Database = () => {
                         <Tooltip title="View Details">
                           <IconButton
                             size="small"
+                            disabled={!isAuthenticated}
                             onClick={() => {
                               navigate(`/logistics-objects/${row.id}`, {
                                 state: { 
@@ -470,6 +485,7 @@ const Database = () => {
                           <IconButton
                             size="small"
                             color="primary"
+                            disabled={!isAuthenticated}
                             onClick={() => handleEdit(row, true)}
                           >
                             <EditIcon fontSize="small" />
