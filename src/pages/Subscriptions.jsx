@@ -94,9 +94,9 @@ const toValue = (value) => {
 
 const cleanSegment = (value) => {
   if (!value) return '';
+  if (value.includes('/')) return value.split('/').pop();
   if (value.includes('#')) return value.split('#').pop();
   if (value.includes(':')) return value.split(':').pop();
-  if (value.includes('/')) return value.split('/').pop();
   return value;
 };
 
@@ -237,15 +237,17 @@ const Subscriptions = () => {
   }, []);
 
   const cleanupItem = (item) => {
+    const subscriptionNode = first(getApiField(item, 'hasSubscription'));
     const statusId = toId(getApiField(item, 'hasRequestStatus'));
     const requestedBy = toId(getApiField(item, 'isRequestedBy'));
     const requestedAt = toValue(getApiField(item, 'isRequestedAt'));
-    const subscriptionRef = toId(getApiField(item, 'hasSubscription'));
+    const subscriptionRef = toId(subscriptionNode || getApiField(item, 'hasSubscription'));
+    const subscriptionSubscriber = toId(getApiField(subscriptionNode, 'hasSubscriber'));
 
     return {
       id: cleanSegment(item['@id']),
       status: cleanSegment(statusId) || 'UNKNOWN',
-      subscriber: requestedBy || '-',
+      subscriber: subscriptionSubscriber || requestedBy || '-',
       requestTime: requestedAt || '',
       subscription: cleanSegment(subscriptionRef) || '-'
     };
@@ -289,7 +291,8 @@ const Subscriptions = () => {
             "api:hasTopic": {
                 "@type": "http://www.w3.org/2001/XMLSchema#anyURI",
                 "@value": newSubscription.topic
-            }
+            },
+            "api:sendLogisticsObjectBody": false
         };
 
         // Use externalApiCall with the selected server's base URL
