@@ -34,9 +34,7 @@ const SubscriptionDialog = ({ open, onClose, objectId }) => {
         `/subscriptions?topicType=https://onerecord.iata.org/ns/api%23LOGISTICS_OBJECT_IDENTIFIER&topic=${encodedTopic}`,
         {
           method: 'GET',
-          server: {
-            token: serverConfig.token
-          }
+          server: serverConfig
         }
       );
 

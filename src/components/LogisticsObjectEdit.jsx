@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -12,6 +12,8 @@ import {
 } from '@mui/material';
 import LogisticsObjectForm from './LogisticsObjectForm';
 import jsonld from 'jsonld';
+import { getAccessToken } from '../auth/keycloak';
+import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
 
 const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) => {
   const [loading, setLoading] = useState(true);
@@ -20,6 +22,22 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
   const [formData, setFormData] = useState(null);
   const [latestRevision, setLatestRevision] = useState(1);
   const [schemaData, setSchemaData] = useState(null);
+
+  const resolveTokenForBaseUrl = useCallback(async (targetBaseUrl) => {
+    const internalBaseUrl = localStorage.getItem('baseUrl');
+
+    // Backward compatibility for existing call sites still providing token in state.
+    if (serverDetails.token && targetBaseUrl === serverDetails.baseUrl) {
+      return serverDetails.token;
+    }
+
+    if (!targetBaseUrl || targetBaseUrl === internalBaseUrl) {
+      return getAccessToken();
+    }
+
+    const externalServer = getExternalServerByBaseUrl(targetBaseUrl);
+    return getExternalAccessToken(externalServer || targetBaseUrl);
+  }, [serverDetails.baseUrl, serverDetails.token]);
 
   // Load object data
   useEffect(() => {
@@ -42,12 +60,9 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
             : `/logistics-objects/${objectId}`;
         }
 
-        const isExternalObject = targetBaseUrl !== serverDetails.baseUrl;
-        const token = isExternalObject
-          ? serverDetails.externalTokens?.[targetBaseUrl]
-          : serverDetails.token;
+        const resolvedToken = await resolveTokenForBaseUrl(targetBaseUrl);
 
-        if (!token) {
+        if (!resolvedToken) {
           throw new Error(`No authentication token available for ${targetBaseUrl}`);
         }
 
@@ -55,7 +70,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
         const response = await fetch(`${targetBaseUrl}${objectPath}`, {
           headers: {
             'Accept': 'application/ld+json',
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${resolvedToken}`
           }
         });
 
@@ -107,7 +122,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
     if (objectId && serverDetails) {
       loadData();
     }
-  }, [objectId, serverDetails]);
+  }, [objectId, resolveTokenForBaseUrl, serverDetails]);
 
   // Load schema data
   useEffect(() => {
@@ -453,11 +468,12 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
       };
 
       // Submit the changes
+      const resolvedToken = await resolveTokenForBaseUrl(serverDetails.baseUrl);
       const response = await fetch(`${serverDetails.baseUrl}/logistics-objects/${objectId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/ld+json',
-          'Authorization': `Bearer ${serverDetails.token}`
+          'Authorization': `Bearer ${resolvedToken}`
         },
         body: JSON.stringify(changeRequest)
       });

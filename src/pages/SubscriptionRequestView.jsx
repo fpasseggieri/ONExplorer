@@ -23,9 +23,46 @@ import {
   AccountCircle as AccountCircleIcon
 } from '@mui/icons-material';
 import { apiCall, externalApiCall } from '../utils/api';
-import { getServers } from '../utils/settings'; // Ensure this import is correct
+import { getExternalServerById } from '../utils/externalAuth';
 import jsonld from 'jsonld';
 import { Link as RouterLink } from 'react-router-dom'; // Import RouterLink if used
+
+const API_NS = 'https://onerecord.iata.org/ns/api#';
+
+const getApiField = (obj, name) => {
+  if (!obj) return undefined;
+  const candidates = [name, `api:${name}`, `${API_NS}${name}`];
+  for (const key of candidates) {
+    if (obj[key] !== undefined) return obj[key];
+  }
+  return undefined;
+};
+
+const first = (value) => (Array.isArray(value) ? value[0] : value);
+
+const toId = (value) => {
+  const v = first(value);
+  if (v === undefined || v === null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'object') return v['@id'] || '';
+  return '';
+};
+
+const toValue = (value) => {
+  const v = first(value);
+  if (v === undefined || v === null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'object') return v['@value'] || '';
+  return String(v);
+};
+
+const cleanSegment = (value) => {
+  if (!value) return '';
+  if (value.includes('/')) return value.split('/').pop();
+  if (value.includes('#')) return value.split('#').pop();
+  if (value.includes(':')) return value.split(':').pop();
+  return value;
+};
 
 const SubscriptionRequestView = () => {
   const { id, serverId } = useParams();
@@ -46,18 +83,19 @@ const SubscriptionRequestView = () => {
   // Clean subscription data function
   const cleanSubscriptionData = useCallback((rawData) => {
     if (!rawData) return null;
+    const subscriptionNode = first(getApiField(rawData, 'hasSubscription'));
 
     return {
-      id: rawData['@id']?.split('/').pop() || id,
-      type: rawData['@type']?.split('#').pop() || '',
-      status: rawData['hasRequestStatus']?.['@id']?.split('#').pop() || 'UNKNOWN',
-      requestedBy: rawData['isRequestedBy']?.['@id'] || '',
-      requestTime: rawData['isRequestedAt']?.['@value'] || '',
+      id: cleanSegment(rawData['@id']) || id,
+      type: cleanSegment(toId(rawData['@type'])) || '',
+      status: cleanSegment(toId(getApiField(rawData, 'hasRequestStatus'))) || 'UNKNOWN',
+      requestedBy: toId(getApiField(rawData, 'isRequestedBy')) || '',
+      requestTime: toValue(getApiField(rawData, 'isRequestedAt')) || '',
       subscription: {
-        id: rawData['hasSubscription']?.['@id']?.split('/').pop() || '',
-        subscriber: rawData['hasSubscription']?.['hasSubscriber']?.['@id'] || '',
-        topic: rawData['hasSubscription']?.['hasTopic']?.['@value'] || '',
-        topicType: rawData['hasSubscription']?.['hasTopicType']?.['@id']?.split('#').pop() || ''
+        id: cleanSegment(toId(subscriptionNode)) || '',
+        subscriber: toId(getApiField(subscriptionNode, 'hasSubscriber')) || '',
+        topic: toValue(getApiField(subscriptionNode, 'hasTopic')) || '',
+        topicType: cleanSegment(toId(getApiField(subscriptionNode, 'hasTopicType'))) || ''
       }
     };
   }, [id]);
@@ -71,17 +109,14 @@ const SubscriptionRequestView = () => {
         
         if (serverId) {
           // External server request
-          const servers = getServers();
-          const selectedServer = servers.find(server => server.id === serverId);
+          const selectedServer = getExternalServerById(serverId);
           if (!selectedServer) {
             throw new Error('Server not found');
           }
           console.log('External server request:', selectedServer.baseUrl); // Debug log
           response = await externalApiCall(selectedServer.baseUrl, `/action-requests/${id}`, {
             method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${selectedServer.token}`
-            }
+            server: selectedServer
           });
         } else {
           // Internal server request

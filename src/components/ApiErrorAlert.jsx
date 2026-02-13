@@ -23,7 +23,7 @@ const ApiErrorAlert = ({ error, onRetry }) => {
           </Button>
         }
       >
-        Unauthorized access. Please check your API token in settings.
+        Unauthorized access. Please sign in again or verify your client/tenant configuration.
       </Alert>
     );
   }

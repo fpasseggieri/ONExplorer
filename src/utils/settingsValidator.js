@@ -1,12 +1,7 @@
 export const validateSettings = () => {
-  const token = localStorage.getItem('token');
   const baseUrl = localStorage.getItem('baseUrl');
   
   const errors = [];
-  
-  if (!token) {
-    errors.push('JWT token is not configured');
-  }
   
   if (!baseUrl) {
     errors.push('API base URL is not configured');

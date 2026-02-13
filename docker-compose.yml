@@ -1,0 +1,37 @@
+services:
+  onexplorer-a:
+    image: onexplorer-onexplorer:latest
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: onexplorer-a
+    environment:
+      PORT: 3000
+      REACT_APP_KEYCLOAK_URL: http://localhost:8080
+      REACT_APP_KEYCLOAK_REALM: onerecord
+      REACT_APP_KEYCLOAK_CLIENT_ID: default-frontend
+      REACT_APP_DEFAULT_BASE_URL: https://localhost:7196/default
+      REACT_APP_ENFORCE_DEFAULT_BASE_URL: "true"
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    restart: unless-stopped
+
+  onexplorer-b:
+    image: onexplorer-onexplorer:latest
+    pull_policy: never
+    container_name: onexplorer-b
+    depends_on:
+      - onexplorer-a
+    environment:
+      PORT: 3100
+      REACT_APP_KEYCLOAK_URL: http://localhost:8080
+      REACT_APP_KEYCLOAK_REALM: onerecord-b
+      REACT_APP_KEYCLOAK_CLIENT_ID: default-frontend-b
+      REACT_APP_DEFAULT_BASE_URL: https://localhost:7297/default
+      REACT_APP_ENFORCE_DEFAULT_BASE_URL: "true"
+    ports:
+      - "3100:3100"
+      - "3101:3101"
+    restart: unless-stopped

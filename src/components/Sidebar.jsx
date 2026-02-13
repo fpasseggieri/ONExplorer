@@ -12,14 +12,15 @@ import {
   Typography,
   Select,
   MenuItem,
-  FormControl
+  FormControl,
+  Avatar,
+  Button
 } from '@mui/material';
 import {
   Storage as DatabaseIcon,
   Settings as SettingsIcon,
   Notifications as NotificationsIcon,
   Send as SendIcon,
-  Edit as EditIcon,
   ChevronLeft as ChevronLeftIcon,
   Menu as MenuIcon,
   Add as AddIcon,
@@ -27,11 +28,14 @@ import {
   Flight,
   Business,
   LocalPostOffice,
-  AccountBalance
+  AccountBalance,
+  Logout as LogoutIcon,
+  Login as LoginIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Logo from './Logo'; // Import the Logo component
 import { validateSettings } from '../utils/settingsValidator';
+import { getAuthClient, logout, login } from '../auth/keycloak';
 
 const THEMES = {
   SHIPPER: { 
@@ -96,12 +100,14 @@ const THEMES = {
   }
 };
 
-const Sidebar = ({ open, toggleDrawer }) => {
+const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
   // Initialize theme from localStorage or default to 'SHIPPER'
   const [selectedTheme, setSelectedTheme] = useState(() => 
     localStorage.getItem('userRole') || 'SHIPPER'
   );
   const [settingsValid, setSettingsValid] = useState(false);
+  const [authDisplayName, setAuthDisplayName] = useState('User');
+  const [authUsername, setAuthUsername] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -110,20 +116,62 @@ const Sidebar = ({ open, toggleDrawer }) => {
     setSettingsValid(isValid);
   }, []);
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setAuthDisplayName('Guest');
+      setAuthUsername('');
+      return undefined;
+    }
+
+    const refreshAuthInfo = () => {
+      try {
+        const authClient = getAuthClient();
+        const parsed = authClient.tokenParsed || {};
+        const displayName = parsed.name || parsed.preferred_username || parsed.email || 'User';
+        const username = parsed.preferred_username || parsed.email || '';
+
+        setAuthDisplayName(displayName);
+        setAuthUsername(username);
+      } catch {
+        setAuthDisplayName('User');
+        setAuthUsername('');
+      }
+    };
+
+    refreshAuthInfo();
+    const interval = setInterval(() => {
+      refreshAuthInfo();
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+  const userInitial = (authDisplayName || 'U').trim().charAt(0).toUpperCase();
+
   const handleThemeChange = (event) => {
     const newTheme = event.target.value;
     setSelectedTheme(newTheme);
     localStorage.setItem('userRole', newTheme);
   };
 
+  const handleAuthAction = async () => {
+    try {
+      if (isAuthenticated) {
+        await logout();
+        return;
+      }
+      await login();
+    } catch (error) {
+      console.error('Authentication action failed:', error);
+    }
+  };
+
   const menuItems = [
     { text: 'Database', icon: <DatabaseIcon />, path: '/' },
     ...(settingsValid ? [
-      { text: 'Create Object', icon: <AddIcon />, path: '/logistics-objects/create' },
-      { text: 'Edit Object', icon: <EditIcon />, path: '/edit' },
-      { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions' },
+      { text: 'Create Object', icon: <AddIcon />, path: '/logistics-objects/create', requiresAuth: true },
+      { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions', requiresAuth: true },
     ] : []),
-    { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications' },
+    { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications', requiresAuth: true },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];
 
@@ -139,7 +187,9 @@ const Sidebar = ({ open, toggleDrawer }) => {
           transition: 'width 0.2s ease-in-out',
           overflowX: 'hidden',
           backgroundColor: THEMES[selectedTheme].color,
-          color: 'white'
+          color: 'white',
+          display: 'flex',
+          flexDirection: 'column'
         }
       }}
     >
@@ -277,52 +327,121 @@ const Sidebar = ({ open, toggleDrawer }) => {
         </Box>
       )}
 
-      <List>
-        {menuItems.map((item) => (
-          <ListItem 
-            key={item.text} 
-            disablePadding 
-            sx={{ display: 'block' }}
-          >
-            <ListItemButton
-              sx={{
-                minHeight: 48,
-                justifyContent: open ? 'initial' : 'center',
-                px: 2.5,
-                backgroundColor: 
-                  location.pathname === item.path 
-                    ? 'rgba(255, 255, 255, 0.08)'
-                    : 'transparent',
-                '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.12)'
-                }
-              }}
-              onClick={() => navigate(item.path)}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <List>
+          {menuItems.map((item) => {
+            const disabled = Boolean(item.requiresAuth && !isAuthenticated);
+            return (
+            <ListItem 
+              key={item.text} 
+              disablePadding 
+              sx={{ display: 'block' }}
             >
-              <ListItemIcon
+              <ListItemButton
+                disabled={disabled}
                 sx={{
-                  minWidth: 0,
-                  mr: open ? 2 : 'auto',
-                  justifyContent: 'center',
-                  color: 'white'
+                  minHeight: 48,
+                  justifyContent: open ? 'initial' : 'center',
+                  px: 2.5,
+                  backgroundColor: 
+                    location.pathname === item.path 
+                      ? 'rgba(255, 255, 255, 0.08)'
+                      : 'transparent',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.12)'
+                  }
+                }}
+                onClick={() => {
+                  if (!disabled) {
+                    navigate(item.path);
+                  }
                 }}
               >
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText 
-                primary={item.text} 
-                sx={{ 
-                  opacity: open ? 1 : 0,
-                  '& .MuiListItemText-primary': {
-                    color: 'white',
-                    fontWeight: location.pathname === item.path ? 600 : 400
-                  }
-                }} 
-              />
-            </ListItemButton>
-          </ListItem>
-        ))}
-      </List>
+                <ListItemIcon
+                  sx={{
+                    minWidth: 0,
+                    mr: open ? 2 : 'auto',
+                    justifyContent: 'center',
+                    color: 'white'
+                  }}
+                >
+                  {item.icon}
+                </ListItemIcon>
+                <ListItemText 
+                  primary={item.text} 
+                  sx={{ 
+                    opacity: open ? 1 : 0,
+                    '& .MuiListItemText-primary': {
+                      color: 'white',
+                      fontWeight: location.pathname === item.path ? 600 : 400
+                    }
+                  }} 
+                />
+              </ListItemButton>
+            </ListItem>
+            );
+          })}
+        </List>
+      </Box>
+
+      <Divider sx={{ backgroundColor: 'rgba(255, 255, 255, 0.12)' }} />
+      <Box sx={{ p: open ? 1.5 : 0.75 }}>
+        {open ? (
+          <Box
+            sx={{
+              borderRadius: 2,
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.16)',
+              p: 1.5
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1.25 }}>
+              <Avatar sx={{ width: 36, height: 36, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}>
+                {userInitial}
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 700, color: 'white' }} noWrap>
+                  {authDisplayName}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }} noWrap>
+                  {!isAuthenticated ? 'Not authenticated' : (authUsername ? `Logged as ${authUsername}` : 'Logged in')}
+                </Typography>
+              </Box>
+            </Box>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={isAuthenticated ? <LogoutIcon /> : <LoginIcon />}
+              onClick={handleAuthAction}
+              sx={{
+                color: 'white',
+                borderColor: 'rgba(255,255,255,0.35)',
+                '&:hover': {
+                  borderColor: 'rgba(255,255,255,0.6)',
+                  backgroundColor: 'rgba(255,255,255,0.12)'
+                }
+              }}
+            >
+              {isAuthenticated ? 'Sign Out' : 'Sign In'}
+            </Button>
+          </Box>
+        ) : (
+          <IconButton
+            onClick={handleAuthAction}
+            sx={{
+              width: '100%',
+              color: 'white',
+              borderRadius: 1.5,
+              '&:hover': {
+                backgroundColor: 'rgba(255,255,255,0.12)'
+              }
+            }}
+            title={isAuthenticated ? `Logged as ${authUsername || authDisplayName}` : 'Sign in'}
+          >
+            {isAuthenticated ? <LogoutIcon /> : <LoginIcon />}
+          </IconButton>
+        )}
+      </Box>
     </Drawer>
   );
 };

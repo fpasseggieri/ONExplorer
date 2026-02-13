@@ -35,6 +35,7 @@ import {
   
 import {
   ArrowBack as ArrowBackIcon,
+  Refresh as RefreshIcon,
   LocalShipping as LocalShippingIcon,
   Description as DescriptionIcon,
   Send as SendIcon,
@@ -48,6 +49,8 @@ import jsonld from 'jsonld';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
+import { getAccessToken } from '../auth/keycloak';
+import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
 
 
 // Update EVENT_TYPES constant with standardized codes
@@ -111,6 +114,59 @@ const formatEventToJsonLd = (eventData, logisticsObjectId) => {
   };
 };
 
+const API_NS = 'https://onerecord.iata.org/ns/api#';
+
+const getField = (obj, name) => {
+  if (!obj) return undefined;
+
+  const candidates = [name, `api:${name}`, `${API_NS}${name}`];
+  for (const candidate of candidates) {
+    if (obj[candidate] !== undefined) {
+      return obj[candidate];
+    }
+  }
+  return undefined;
+};
+
+const toFirst = (value) => (Array.isArray(value) ? value[0] : value);
+
+const unwrapScalar = (value) => {
+  const first = toFirst(value);
+  if (first === undefined || first === null) return undefined;
+  if (typeof first === 'object') {
+    if (first['@value'] !== undefined) return first['@value'];
+    if (first['@id'] !== undefined) return first['@id'];
+  }
+  return first;
+};
+
+const unwrapId = (value) => {
+  const first = toFirst(value);
+  if (first === undefined || first === null) return undefined;
+  if (typeof first === 'string') return first;
+  if (typeof first === 'object') {
+    return first['@id'] || first.id || first['@value'];
+  }
+  return undefined;
+};
+
+const normalizeToArray = (value) => {
+  if (value === undefined || value === null) return [];
+  return Array.isArray(value) ? value : [value];
+};
+
+const typeIncludes = (value, typeName) => {
+  const types = normalizeToArray(value);
+  return types.some((t) => typeof t === 'string' && t.includes(typeName));
+};
+
+const getStatusLabel = (status) => {
+  if (!status) return 'UNKNOWN';
+  if (status.includes('#')) return status.split('#').pop();
+  if (status.includes(':')) return status.split(':').pop();
+  return status;
+};
+
 const LogisticsObjectView = () => {
   const { id } = useParams();
   const location = useLocation();
@@ -134,9 +190,25 @@ const LogisticsObjectView = () => {
   const [auditTrail, setAuditTrail] = useState(null);
   const [loadingAuditTrail, setLoadingAuditTrail] = useState(false);
 
-  // Get server info from location state
-  const serverUrl = location.state?.serverUrl;
+  // Get server info from location state, with refresh-safe fallback
+  const serverUrl = location.state?.serverUrl || localStorage.getItem('baseUrl');
   const token = location.state?.token;
+
+  const getRequestToken = useCallback(async (targetBaseUrl = serverUrl) => {
+    const internalBaseUrl = localStorage.getItem('baseUrl');
+
+    // Backward compatibility for navigation state that still passes a token.
+    if (token) {
+      return token;
+    }
+
+    if (!targetBaseUrl || targetBaseUrl === internalBaseUrl) {
+      return getAccessToken();
+    }
+
+    const externalServer = getExternalServerByBaseUrl(targetBaseUrl);
+    return getExternalAccessToken(externalServer || targetBaseUrl);
+  }, [serverUrl, token]);
 
   // Add this to determine if the object is external
   const isExternalObject = serverUrl !== localStorage.getItem('baseUrl');
@@ -145,15 +217,16 @@ const LogisticsObjectView = () => {
     try {
       setLoading(true);
       
-      if (!serverUrl || !token) {
+      if (!serverUrl) {
         throw new Error('Server configuration not found');
       }
+      const requestToken = await getRequestToken();
 
       const response = await fetch(`${serverUrl}/logistics-objects/${id}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/ld+json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${requestToken}`
         }
       });
 
@@ -218,15 +291,16 @@ const LogisticsObjectView = () => {
     } finally {
       setLoading(false);
     }
-  }, [id, navigate, serverUrl, token]);
+  }, [getRequestToken, id, navigate, serverUrl]);
 
   const fetchEvents = useCallback(async () => {
     try {
       setLoadingEvents(true);
+      const requestToken = await getRequestToken();
       const response = await fetch(`${serverUrl}/logistics-objects/${id}/logistics-events`, {
         headers: {
           'Accept': 'application/ld+json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${requestToken}`
         }
       });
 
@@ -287,56 +361,101 @@ const LogisticsObjectView = () => {
     } finally {
       setLoadingEvents(false);
     }
-  }, [id, serverUrl, token]);
+  }, [getRequestToken, id, serverUrl]);
 
   const fetchAuditTrail = useCallback(async () => {
     try {
       setLoadingAuditTrail(true);
+      const requestToken = await getRequestToken();
       const response = await fetch(`${serverUrl}/logistics-objects/${id}/audit-trail`, {
         headers: {
           'Accept': 'application/ld+json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${requestToken}`
         }
       });
       const data = await response.json();
-      setAuditTrail(data);
+
+      const latestRevision = String(
+        unwrapScalar(getField(data, 'hasLatestRevision')) || '1'
+      );
+
+      const actionRequestRefs = [
+        ...normalizeToArray(getField(data, 'hasActionRequest')),
+        ...normalizeToArray(getField(data, 'hasChangeRequest'))
+      ]
+        .map((item) => unwrapId(item))
+        .filter(Boolean);
+
+      const uniqueRefs = [...new Set(actionRequestRefs)];
+
+      const detailedResponses = await Promise.all(
+        uniqueRefs.map(async (url) => {
+          try {
+            const actionResponse = await fetch(url, {
+              headers: {
+                'Accept': 'application/ld+json',
+                'Authorization': `Bearer ${requestToken}`
+              }
+            });
+
+            if (!actionResponse.ok) {
+              return null;
+            }
+
+            return actionResponse.json();
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const resolvedItems = detailedResponses
+        .filter(Boolean)
+        .flatMap((item) => (Array.isArray(item?.['@graph']) ? item['@graph'] : [item]));
+
+      setAuditTrail({
+        raw: data,
+        items: resolvedItems,
+        latestRevision
+      });
     } catch (error) {
       console.error('Error fetching audit trail:', error);
     } finally {
       setLoadingAuditTrail(false);
     }
-  }, [id, serverUrl, token]);
+  }, [getRequestToken, id, serverUrl]);
 
   useEffect(() => {
-    if (!serverUrl || !token) {
+    if (!serverUrl) {
       setError('Server configuration not found');
+      setLoading(false);
       return;
     }
     fetchObjectData();
     fetchEvents();
     fetchAuditTrail();
-  }, [fetchAuditTrail, fetchEvents, fetchObjectData, serverUrl, token]);
+  }, [fetchAuditTrail, fetchEvents, fetchObjectData, serverUrl]);
 
   const handleBack = () => {
     navigate('/');
   };
 
-  // Update the handleRefresh function to fetch both object data and events
+  // Refresh object details and related sections in place
   const handleRefresh = async () => {
-    await fetchObjectData();
-    await fetchEvents();
+    await Promise.all([fetchObjectData(), fetchEvents(), fetchAuditTrail()]);
   };
 
   const handleSendEvent = async () => {
     try {
       setSendingEvent(true);
+      const requestToken = await getRequestToken();
       const eventJsonLd = formatEventToJsonLd(eventData, id);
       
       const response = await fetch(`${serverUrl}/logistics-objects/${id}/logistics-events`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/ld+json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${requestToken}`
         },
         body: JSON.stringify(eventJsonLd)
       });
@@ -391,16 +510,13 @@ const LogisticsObjectView = () => {
       if (Object.keys(value).length === 1 && value['@id']) {
         if (isLogisticsObjectLink(value['@id'])) {
           const externalServerUrl = new URL(value['@id']).origin;
-          const externalServers = JSON.parse(localStorage.getItem('externalServers') || '[]');
-          const serverConfig = externalServers.find(s => s.baseUrl === externalServerUrl);
           return (
             <Button
             onClick={() => {
               navigate(`/logistics-objects/${value['@id'].split('/').pop()}`, {
                 replace: false,
                 state: { 
-                  serverUrl: externalServerUrl || serverUrl,
-                  token: serverConfig?.token || token
+                  serverUrl: externalServerUrl || serverUrl
                 }
               });
               window.location.reload();
@@ -497,43 +613,42 @@ const LogisticsObjectView = () => {
   };
 
   const getStatusColor = (status) => {
+    const statusLabel = getStatusLabel(status);
     const colors = {
       'REQUEST_ACCEPTED': 'success',
+      'REQUEST_REJECTED': 'error',
       'REQUEST_FAILED': 'error',
       'REQUEST_PENDING': 'warning'
     };
-    return colors[status.split('#')[1]] || 'default';
+    return colors[statusLabel] || 'default';
   };
 
   const renderAuditTrail = () => {
     if (!auditTrail) return null;
 
-    let items = [];
-    let latestRevision = '1';
-
-    if (auditTrail['@graph']) {
-      items = auditTrail['@graph'];
-      latestRevision = auditTrail.hasLatestRevision?.['@value'] || '1';
-    } else if (Array.isArray(auditTrail)) {
-      items = auditTrail;
-    } else if (auditTrail['@id'] && auditTrail['@type']) {
-      items = [auditTrail];
-    }
+    const items = Array.isArray(auditTrail.items)
+      ? auditTrail.items
+      : Array.isArray(auditTrail['@graph'])
+        ? auditTrail['@graph']
+        : Array.isArray(auditTrail)
+          ? auditTrail
+          : (auditTrail['@id'] ? [auditTrail] : []);
+    const latestRevision = auditTrail.latestRevision || String(unwrapScalar(getField(auditTrail, 'hasLatestRevision')) || '1');
 
     const changeRequests = items
       .filter(item => {
         const type = item['@type'];
-        return type === 'ChangeRequest' || (typeof type === 'string' && type.includes('ChangeRequest'));
+        return typeIncludes(type, 'ChangeRequest');
       })
       .sort((a, b) => {
-        const timeA = new Date(a.isRequestedAt?.['@value'] || a.requestedAt || 0).getTime();
-        const timeB = new Date(b.isRequestedAt?.['@value'] || b.requestedAt || 0).getTime();
+        const timeA = new Date(unwrapScalar(getField(a, 'isRequestedAt')) || a.requestedAt || 0).getTime();
+        const timeB = new Date(unwrapScalar(getField(b, 'isRequestedAt')) || b.requestedAt || 0).getTime();
         return timeB - timeA;
       });
 
     const changes = items.filter(item => {
       const type = item['@type'];
-      return type === 'Change' || (typeof type === 'string' && type.includes('Change'));
+      return typeIncludes(type, 'Change') && !typeIncludes(type, 'ChangeRequest');
     });
 
     if (changeRequests.length === 0) {
@@ -590,19 +705,19 @@ const LogisticsObjectView = () => {
             <Box sx={{ p: 2, textAlign: 'center' }}>
               <Typography color="textSecondary">
                 No changes have been made to this object.
-                Latest revision: {auditTrail.hasLatestRevision?.['@value'] || '1'}
+                Latest revision: {latestRevision}
               </Typography>
             </Box>
           ) : (
             <Timeline>
               {changeRequests.map((request) => {
-                const changeId = request.hasChange?.['@id'] || request.changeId;
+                const changeId = unwrapId(getField(request, 'hasChange')) || request.changeId;
                 const change = changes.find(c => c['@id'] === changeId);
 
-                const timestamp = request.isRequestedAt?.['@value'] || request.requestedAt || request.createdAt || Date.now();
-                const statusId = request.hasRequestStatus?.['@id'] || request.status || 'REQUEST_PENDING';
-                const description = change?.hasDescription || change?.description || 'Change Request';
-                const revision = change?.hasRevision?.['@value'] || change?.revision || '1';
+                const timestamp = unwrapScalar(getField(request, 'isRequestedAt')) || request.requestedAt || request.createdAt || Date.now();
+                const statusId = unwrapId(getField(request, 'hasRequestStatus')) || request.status || 'REQUEST_PENDING';
+                const description = unwrapScalar(getField(change, 'hasDescription')) || change?.description || 'Change Request';
+                const revision = String(unwrapScalar(getField(change, 'hasRevision')) || change?.revision || '1');
                 
                 return (
                   <TimelineItem key={request['@id']}>
@@ -625,7 +740,7 @@ const LogisticsObjectView = () => {
                             Revision: {revision}
                           </Typography>
                           <Chip 
-                            label={statusId.split('#')[1] || statusId}
+                            label={getStatusLabel(statusId)}
                             color={getStatusColor(statusId)}
                             size="small"
                           />
@@ -740,8 +855,7 @@ const LogisticsObjectView = () => {
     // Get all configured servers
     const externalServers = JSON.parse(localStorage.getItem('externalServers') || '[]');
     const currentServer = {
-      baseUrl: localStorage.getItem('baseUrl'),
-      token: localStorage.getItem('token')
+      baseUrl: localStorage.getItem('baseUrl')
     };
     
     // Check if URL matches any configured server
@@ -764,8 +878,7 @@ const LogisticsObjectView = () => {
         component={RouterLink}
         to={`/changes-request/${changeRequestId}`}
         state={serverDetails ? {
-          serverUrl: serverDetails.baseUrl,
-          token: serverDetails.token
+          serverUrl: serverDetails.baseUrl
         } : undefined}
         startIcon={<DescriptionIcon />}
         sx={{ textTransform: 'none' }}
@@ -831,15 +944,26 @@ const LogisticsObjectView = () => {
           >
             Back to Database
           </Button>
-          {isExternalObject && (
-            <Chip
-              label="External Object"
-              color="warning"
-              icon={<InfoIcon />}
-              sx={{ ml: 2 }}
-              title={`Server: ${serverUrl}`}
-            />
-          )}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<RefreshIcon />}
+              onClick={handleRefresh}
+              disabled={loading || loadingEvents || loadingAuditTrail}
+            >
+              Refresh
+            </Button>
+            {isExternalObject && (
+              <Chip
+                label="External Object"
+                color="warning"
+                icon={<InfoIcon />}
+                sx={{ ml: 1 }}
+                title={`Server: ${serverUrl}`}
+              />
+            )}
+          </Box>
         </Box>
         
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>

@@ -1,3 +1,6 @@
+import { getAccessToken } from '../auth/keycloak';
+import { getExternalAccessToken, getExternalServerByBaseUrl } from './externalAuth';
+
 export class ApiError extends Error {
   constructor(message, status) {
     super(message);
@@ -5,12 +8,12 @@ export class ApiError extends Error {
   }
 }
 
-const getConfig = () => {
-  const token = localStorage.getItem('token');
+const getConfig = async () => {
+  const token = await getAccessToken();
   const baseUrl = localStorage.getItem('baseUrl');
                  
   if (!token) {
-    throw new ApiError('No JWT token found. Please configure in settings.', 401);
+    throw new ApiError('No access token available. Please sign in again.', 401);
   }
 
   if (!baseUrl) {
@@ -21,13 +24,14 @@ const getConfig = () => {
     baseUrl,
     headers: {
       'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/ld+json'
+      'Accept': 'application/ld+json; version=2.2.0',
+      'Content-Type': 'application/ld+json; version=2.2.0'
     }
   };
 };
 
 export const getLogisticsObjects = async (type = '') => {
-  const config = getConfig();
+  const config = await getConfig();
 
   const response = await fetch(`${config.baseUrl}/logistics-objects/internal/_all?limit=2000&offset=0&t=${type}`, {
     method: 'GET',
@@ -44,7 +48,7 @@ export const getLogisticsObjects = async (type = '') => {
 };
 
 export const apiCall = async (endpoint, options = {}) => {
-  const config = getConfig();
+  const config = await getConfig();
 
   const response = await fetch(`${config.baseUrl}${endpoint}`, {
     ...options,
@@ -58,6 +62,10 @@ export const apiCall = async (endpoint, options = {}) => {
     throw new ApiError('API request failed', response.status);
   }
 
+  if (options.returnFullResponse) {
+    return response;
+  }
+
   // Don't try to parse JSON for PATCH requests or 204 responses
   if (options.method === 'PATCH' || response.status === 204 || response.status === 201) {
     return response;
@@ -67,13 +75,13 @@ export const apiCall = async (endpoint, options = {}) => {
 };
 
 export const getLogisticsObjectWithRevision = async (objectId) => {
-  const config = getConfig();
+  const config = await getConfig();
 
   const response = await fetch(`${config.baseUrl}/logistics-objects/${objectId}`, {
     method: 'GET',
     headers: {
       ...config.headers,
-      'Accept': 'application/ld+json'
+      'Accept': 'application/ld+json; version=2.2.0'
     }
   });
 
@@ -91,7 +99,7 @@ export const getLogisticsObjectWithRevision = async (objectId) => {
 };
 
 export const submitChangeRequest = async (objectId, objectType, operations, revision) => {
-  const config = getConfig();
+  const config = await getConfig();
 
   const changeRequest = {
     "@context": {
@@ -114,7 +122,7 @@ export const submitChangeRequest = async (objectId, objectType, operations, revi
     method: 'POST',
     headers: {
       ...config.headers,
-      'Content-Type': 'application/ld+json'
+      'Content-Type': 'application/ld+json; version=2.2.0'
     },
     body: JSON.stringify(changeRequest)
   });
@@ -127,11 +135,15 @@ export const submitChangeRequest = async (objectId, objectType, operations, revi
 };
 
 export const externalApiCall = async (baseUrl, endpoint, options = {}) => {
+  const serverConfig = options.server || getExternalServerByBaseUrl(baseUrl);
+  const externalToken = await getExternalAccessToken(serverConfig || baseUrl);
+
   const response = await fetch(`${baseUrl}${endpoint}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/ld+json',
-      'Authorization': `Bearer ${options.server?.token}`,
+      'Accept': 'application/ld+json; version=2.2.0',
+      'Content-Type': 'application/ld+json; version=2.2.0',
+      'Authorization': `Bearer ${externalToken}`,
       ...options.headers
     }
   });
