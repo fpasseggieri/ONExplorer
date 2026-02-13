@@ -6,6 +6,7 @@ import Database from './pages/Database';
 import LogisticsObjectView from './pages/LogisticsObjectView';
 import CreateLogisticsObject from './pages/CreateLogisticsObject';
 import Notifications from './pages/Notifications';
+import NotificationsNew from './pages/NotificationsNew';
 import Subscriptions from './pages/Subscriptions';
 import SubscriptionRequestView from './pages/SubscriptionRequestView';
 import Changes from './pages/Changes';
@@ -185,6 +186,7 @@ function App() {
             <Route path="/dashboard" element={isAuthenticated ? <Dashboard /> : <Navigate to="/" replace />} />
             <Route path="/logistics-objects/create" element={isAuthenticated ? <CreateLogisticsObject /> : <Navigate to="/" replace />} />
             <Route path="/notifications" element={isAuthenticated ? <Notifications /> : <Navigate to="/" replace />} />
+            <Route path="/notifications-new" element={isAuthenticated ? <NotificationsNew /> : <Navigate to="/" replace />} />
             <Route path="/subscriptions" element={isAuthenticated ? <Subscriptions /> : <Navigate to="/" replace />} />
             <Route path="/subscription-requests/:serverPort/:tenant/action-requests/:id" element={isAuthenticated ? <SubscriptionRequestView /> : <Navigate to="/" replace />} />
             <Route path="/changes" element={isAuthenticated ? <Changes /> : <Navigate to="/" replace />} />

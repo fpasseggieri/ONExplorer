@@ -32,19 +32,43 @@ const getConfig = async () => {
 
 export const getLogisticsObjects = async (type = '') => {
   const config = await getConfig();
+  const pageSize = 200;
+  const seenIds = new Set();
+  const allItems = [];
+  let offset = 0;
+  let hasMore = true;
 
-  const response = await fetch(`${config.baseUrl}/logistics-objects/internal/_all?limit=2000&offset=0&t=${type}`, {
-    method: 'GET',
-    headers: {
-      ...config.headers
+  while (hasMore) {
+    const response = await fetch(`${config.baseUrl}/logistics-objects/internal/_all?limit=${pageSize}&offset=${offset}&t=${type}`, {
+      method: 'GET',
+      headers: {
+        ...config.headers
+      }
+    });
+
+    if (!response.ok) {
+      throw new ApiError('Failed to fetch logistics objects', response.status);
     }
-  });
 
-  if (!response.ok) {
-    throw new ApiError('Failed to fetch logistics objects', response.status);
+    const pageData = await response.json();
+    const pageItems = pageData['@graph'] ? pageData['@graph'] : [pageData];
+
+    const validItems = pageItems.filter((item) => item && Object.keys(item).length > 0);
+    let addedThisPage = 0;
+    for (const item of validItems) {
+      const itemId = item['@id'] || JSON.stringify(item);
+      if (!seenIds.has(itemId)) {
+        seenIds.add(itemId);
+        allItems.push(item);
+        addedThisPage += 1;
+      }
+    }
+
+    hasMore = validItems.length === pageSize && addedThisPage > 0;
+    offset += pageSize;
   }
 
-  return response.json();
+  return { '@graph': allItems };
 };
 
 export const apiCall = async (endpoint, options = {}) => {

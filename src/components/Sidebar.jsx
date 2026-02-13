@@ -172,6 +172,7 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
       { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions', requiresAuth: true },
     ] : []),
     { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications', requiresAuth: true },
+    { text: 'Notifications New', icon: <NotificationsIcon />, path: '/notifications-new', requiresAuth: true },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];
 
