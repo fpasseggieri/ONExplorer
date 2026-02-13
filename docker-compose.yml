@@ -28,7 +28,7 @@ services:
       PORT: 3100
       REACT_APP_KEYCLOAK_URL: http://localhost:8080
       REACT_APP_KEYCLOAK_REALM: onerecord-b
-      REACT_APP_KEYCLOAK_CLIENT_ID: default-frontend
+      REACT_APP_KEYCLOAK_CLIENT_ID: default-frontend-b
       REACT_APP_DEFAULT_BASE_URL: https://localhost:7297/default
       REACT_APP_ENFORCE_DEFAULT_BASE_URL: "true"
     ports:
