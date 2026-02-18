@@ -8,11 +8,17 @@ import {
   TextField,
   MenuItem,
   Alert,
-  Divider
+  Divider,
+  Tabs,
+  Tab,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
-  Save as SaveIcon
+  Save as SaveIcon,
+  ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import { apiCall } from '../utils/api';
 import LogisticsObjectForm from '../components/LogisticsObjectForm';
@@ -24,6 +30,8 @@ const CreateLogisticsObject = () => {
   const [error, setError] = useState(null);
   const [availableTypes, setAvailableTypes] = useState([]);
   const [formData, setFormData] = useState(null);
+  const [inputMode, setInputMode] = useState('form');
+  const [rawJsonLd, setRawJsonLd] = useState('');
 
   useEffect(() => {
     const loadAvailableTypes = async () => {
@@ -51,21 +59,39 @@ const CreateLogisticsObject = () => {
     loadAvailableTypes();
   }, []);
 
+  const buildFormPayload = () => {
+    if (!selectedType || !formData) return null;
+
+    const [, type] = selectedType.split('.');
+    return {
+      '@context': {
+        '@vocab': 'https://onerecord.iata.org/ns/cargo#'
+      },
+      '@type': [type],
+      ...formData
+    };
+  };
+
+  const getPayloadPreview = () => {
+    if (inputMode === 'jsonld') {
+      return rawJsonLd || '{}';
+    }
+
+    const payload = buildFormPayload();
+    return payload ? JSON.stringify(payload, null, 2) : '{}';
+  };
+
   const handleSubmit = async () => {
-    if (!formData) return;
+    if (inputMode === 'form' && !formData) return;
+    if (inputMode === 'jsonld' && !rawJsonLd.trim()) return;
     
     setLoading(true);
     setError(null);
 
     try {
-      const [, type] = selectedType.split('.');
-      const jsonLdData = {
-        '@context': {
-          '@vocab': 'https://onerecord.iata.org/ns/cargo#'
-        },
-        '@type': [type],
-        ...formData
-      };
+      const jsonLdData = inputMode === 'jsonld'
+        ? JSON.parse(rawJsonLd)
+        : buildFormPayload();
 
       await apiCall('/logistics-objects', {
         method: 'POST',
@@ -114,53 +140,111 @@ const CreateLogisticsObject = () => {
       )}
 
       <Paper sx={{ p: 3 }}>
-        <TextField
-          select
-          fullWidth
-          label="Select Object Type"
-          value={selectedType}
-          onChange={(e) => setSelectedType(e.target.value)}
+        <Tabs
+          value={inputMode}
+          onChange={(_, value) => setInputMode(value)}
           sx={{ mb: 3 }}
         >
-          {availableTypes.map((type) => (
-            <MenuItem 
-              key={type.fullPath} 
-              value={type.fullPath}
-            >
-              <Box>
-                <Typography variant="subtitle1">
-                  {type.name}
-                </Typography>
-                <Typography variant="caption" color="textSecondary">
-                  {type.description}
-                </Typography>
-              </Box>
-            </MenuItem>
-          ))}
-        </TextField>
+          <Tab value="form" label="Form Input" />
+          <Tab value="jsonld" label="Raw JSON-LD" />
+        </Tabs>
 
-        {selectedType && (
+        {inputMode === 'form' && (
           <>
-            <LogisticsObjectForm
-              objectType={{
-                schema: selectedType.split('.')[0],
-                name: selectedType.split('.')[1],
-              }}
-              onSubmit={setFormData}
-              loading={loading}
+            <TextField
+              select
+              fullWidth
+              label="Select Object Type"
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              sx={{ mb: 3 }}
+            >
+              {availableTypes.map((type) => (
+                <MenuItem
+                  key={type.fullPath}
+                  value={type.fullPath}
+                >
+                  <Box>
+                    <Typography variant="subtitle1">
+                      {type.name}
+                    </Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      {type.description}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+              ))}
+            </TextField>
+
+            {selectedType && (
+              <>
+                <LogisticsObjectForm
+                  objectType={{
+                    schema: selectedType.split('.')[0],
+                    name: selectedType.split('.')[1],
+                  }}
+                  onSubmit={setFormData}
+                  debounceMs={0}
+                />
+                <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    startIcon={<SaveIcon />}
+                    variant="contained"
+                    onClick={handleSubmit}
+                    disabled={loading || !formData}
+                  >
+                    Create Object
+                  </Button>
+                </Box>
+              </>
+            )}
+          </>
+        )}
+
+        {inputMode === 'jsonld' && (
+          <>
+            <TextField
+              fullWidth
+              multiline
+              minRows={14}
+              label="JSON-LD payload"
+              value={rawJsonLd}
+              onChange={(e) => setRawJsonLd(e.target.value)}
+              placeholder='{\n  "@context": {\n    "@vocab": "https://onerecord.iata.org/ns/cargo#"\n  },\n  "@type": ["Piece"]\n}'
             />
             <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
               <Button
                 startIcon={<SaveIcon />}
                 variant="contained"
                 onClick={handleSubmit}
-                disabled={loading || !formData}
+                disabled={loading || !rawJsonLd.trim()}
               >
                 Create Object
               </Button>
             </Box>
           </>
         )}
+
+        <Accordion sx={{ mt: 3 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="subtitle1">Request Preview</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Box
+              component="pre"
+              sx={{
+                m: 0,
+                p: 2,
+                backgroundColor: '#f5f5f5',
+                borderRadius: 1,
+                overflow: 'auto',
+                fontSize: 12
+              }}
+            >
+              {getPayloadPreview()}
+            </Box>
+          </AccordionDetails>
+        </Accordion>
       </Paper>
     </Box>
   );
