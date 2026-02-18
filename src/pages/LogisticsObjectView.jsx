@@ -161,10 +161,43 @@ const typeIncludes = (value, typeName) => {
 };
 
 const getStatusLabel = (status) => {
+  const normalized = normalizeRequestStatus(status);
+  return normalized || 'UNKNOWN';
+};
+
+const normalizeRequestStatus = (status) => {
   if (!status) return 'UNKNOWN';
-  if (status.includes('#')) return status.split('#').pop();
-  if (status.includes(':')) return status.split(':').pop();
-  return status;
+
+  const raw = typeof status === 'string'
+    ? status
+    : status['@id'] || status['@value'] || '';
+  const label = raw.includes('#')
+    ? raw.split('#').pop()
+    : raw.includes(':')
+      ? raw.split(':').pop()
+      : raw;
+
+  const upper = String(label).toUpperCase();
+  if (upper.startsWith('REQUEST_STATUS_')) {
+    return `REQUEST_${upper.replace('REQUEST_STATUS_', '')}`;
+  }
+  if (upper === 'PENDING') return 'REQUEST_PENDING';
+  if (upper === 'ACCEPTED') return 'REQUEST_ACCEPTED';
+  if (upper === 'REJECTED') return 'REQUEST_REJECTED';
+  if (upper === 'FAILED') return 'REQUEST_FAILED';
+  if (upper === 'REVOKED') return 'REQUEST_REVOKED';
+  return upper;
+};
+
+const toAuditTrailTimestamp = (localDateTime) => {
+  if (!localDateTime) return '';
+  const date = new Date(localDateTime);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const iso = date.toISOString();
+  const [datePart, timePartWithMs] = iso.split('T');
+  const timePart = timePartWithMs.split('.')[0];
+  return `${datePart.replace(/-/g, '')}T${timePart.replace(/:/g, '')}Z`;
 };
 
 const LogisticsObjectView = () => {
@@ -189,6 +222,17 @@ const LogisticsObjectView = () => {
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [auditTrail, setAuditTrail] = useState(null);
   const [loadingAuditTrail, setLoadingAuditTrail] = useState(false);
+  const [auditFilters, setAuditFilters] = useState({
+    updatedFrom: '',
+    updatedTo: '',
+    status: ''
+  });
+  const [appliedAuditFilters, setAppliedAuditFilters] = useState({
+    updatedFrom: '',
+    updatedTo: '',
+    status: ''
+  });
+  const [processingActions, setProcessingActions] = useState({});
 
   // Get server info from location state, with refresh-safe fallback
   const serverUrl = location.state?.serverUrl || localStorage.getItem('baseUrl');
@@ -367,12 +411,24 @@ const LogisticsObjectView = () => {
     try {
       setLoadingAuditTrail(true);
       const requestToken = await getRequestToken();
-      const response = await fetch(`${serverUrl}/logistics-objects/${id}/audit-trail`, {
+      const query = new URLSearchParams();
+      const updatedFrom = toAuditTrailTimestamp(appliedAuditFilters.updatedFrom);
+      const updatedTo = toAuditTrailTimestamp(appliedAuditFilters.updatedTo);
+
+      if (updatedFrom) query.set('updated-from', updatedFrom);
+      if (updatedTo) query.set('updated-to', updatedTo);
+      if (appliedAuditFilters.status) query.set('status', appliedAuditFilters.status);
+
+      const auditTrailUrl = `${serverUrl}/logistics-objects/${id}/audit-trail${query.toString() ? `?${query.toString()}` : ''}`;
+      const response = await fetch(auditTrailUrl, {
         headers: {
           'Accept': 'application/ld+json',
           'Authorization': `Bearer ${requestToken}`
         }
       });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch audit trail: ${response.statusText}`);
+      }
       const data = await response.json();
 
       const latestRevision = String(
@@ -391,7 +447,8 @@ const LogisticsObjectView = () => {
       const detailedResponses = await Promise.all(
         uniqueRefs.map(async (url) => {
           try {
-            const actionResponse = await fetch(url, {
+            const actionRequestUrl = url.startsWith('http') ? url : `${serverUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+            const actionResponse = await fetch(actionRequestUrl, {
               headers: {
                 'Accept': 'application/ld+json',
                 'Authorization': `Bearer ${requestToken}`
@@ -420,10 +477,11 @@ const LogisticsObjectView = () => {
       });
     } catch (error) {
       console.error('Error fetching audit trail:', error);
+      setError(error.message || 'Failed to fetch audit trail');
     } finally {
       setLoadingAuditTrail(false);
     }
-  }, [getRequestToken, id, serverUrl]);
+  }, [appliedAuditFilters.status, appliedAuditFilters.updatedFrom, appliedAuditFilters.updatedTo, getRequestToken, id, serverUrl]);
 
   useEffect(() => {
     if (!serverUrl) {
@@ -433,8 +491,14 @@ const LogisticsObjectView = () => {
     }
     fetchObjectData();
     fetchEvents();
+  }, [fetchEvents, fetchObjectData, serverUrl]);
+
+  useEffect(() => {
+    if (!serverUrl) {
+      return;
+    }
     fetchAuditTrail();
-  }, [fetchAuditTrail, fetchEvents, fetchObjectData, serverUrl]);
+  }, [fetchAuditTrail, serverUrl]);
 
   const handleBack = () => {
     navigate('/');
@@ -443,6 +507,76 @@ const LogisticsObjectView = () => {
   // Refresh object details and related sections in place
   const handleRefresh = async () => {
     await Promise.all([fetchObjectData(), fetchEvents(), fetchAuditTrail()]);
+  };
+
+  const getActionRequestEndpoint = (requestUrl) => {
+    if (!requestUrl || !requestUrl.includes('/action-requests/')) {
+      return null;
+    }
+
+    if (requestUrl.startsWith('http')) {
+      return requestUrl;
+    }
+
+    const requestId = requestUrl.split('/action-requests/')[1];
+    if (!requestId) return null;
+    return `${serverUrl}/action-requests/${requestId}`;
+  };
+
+  const updateRequestStatus = async (requestUrl, nextStatus) => {
+    const endpoint = getActionRequestEndpoint(requestUrl);
+    if (!endpoint) return;
+
+    try {
+      setProcessingActions((prev) => ({ ...prev, [requestUrl]: true }));
+      const requestToken = await getRequestToken();
+      const response = await fetch(`${endpoint}?status=${encodeURIComponent(nextStatus)}`, {
+        method: 'PATCH',
+        headers: {
+          'Accept': 'application/ld+json',
+          'Authorization': `Bearer ${requestToken}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to update request status: ${response.statusText}`);
+      }
+
+      await fetchAuditTrail();
+      await fetchObjectData();
+    } catch (err) {
+      setError(err.message || 'Failed to update request status');
+    } finally {
+      setProcessingActions((prev) => ({ ...prev, [requestUrl]: false }));
+    }
+  };
+
+  const revokeRequest = async (requestUrl) => {
+    const endpoint = getActionRequestEndpoint(requestUrl);
+    if (!endpoint) return;
+
+    try {
+      setProcessingActions((prev) => ({ ...prev, [requestUrl]: true }));
+      const requestToken = await getRequestToken();
+      const response = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/ld+json',
+          'Authorization': `Bearer ${requestToken}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to revoke request: ${response.statusText}`);
+      }
+
+      await fetchAuditTrail();
+      await fetchObjectData();
+    } catch (err) {
+      setError(err.message || 'Failed to revoke request');
+    } finally {
+      setProcessingActions((prev) => ({ ...prev, [requestUrl]: false }));
+    }
   };
 
   const handleSendEvent = async () => {
@@ -618,9 +752,10 @@ const LogisticsObjectView = () => {
       'REQUEST_ACCEPTED': 'success',
       'REQUEST_REJECTED': 'error',
       'REQUEST_FAILED': 'error',
-      'REQUEST_PENDING': 'warning'
+      'REQUEST_PENDING': 'warning',
+      'REQUEST_REVOKED': 'info'
     };
-    return colors[statusLabel] || 'default';
+    return colors[statusLabel] || 'info';
   };
 
   const renderAuditTrail = () => {
@@ -646,41 +781,37 @@ const LogisticsObjectView = () => {
         return timeB - timeA;
       });
 
+    const fromDate = appliedAuditFilters.updatedFrom ? new Date(appliedAuditFilters.updatedFrom) : null;
+    const toDate = appliedAuditFilters.updatedTo ? new Date(appliedAuditFilters.updatedTo) : null;
+    const statusFilter = appliedAuditFilters.status
+      ? normalizeRequestStatus(appliedAuditFilters.status)
+      : '';
+
+    const filteredChangeRequests = changeRequests.filter((request) => {
+      const rawStatus = unwrapId(getField(request, 'hasRequestStatus')) || request.status || 'REQUEST_PENDING';
+      const normalizedStatus = normalizeRequestStatus(rawStatus);
+      const timestamp = unwrapScalar(getField(request, 'isRequestedAt')) || request.requestedAt || request.createdAt;
+      const requestDate = timestamp ? new Date(timestamp) : null;
+
+      if (statusFilter && normalizedStatus !== statusFilter) {
+        return false;
+      }
+
+      if (fromDate && requestDate && requestDate < fromDate) {
+        return false;
+      }
+
+      if (toDate && requestDate && requestDate > toDate) {
+        return false;
+      }
+
+      return true;
+    });
+
     const changes = items.filter(item => {
       const type = item['@type'];
       return typeIncludes(type, 'Change') && !typeIncludes(type, 'ChangeRequest');
     });
-
-    if (changeRequests.length === 0) {
-      return (
-        <Accordion sx={{ mt: 2 }}>
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            aria-controls="audit-trail-content"
-            id="audit-trail-header"
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <EventIcon sx={{ color: '#1976d2' }} />
-              <Typography sx={{ color: '#1976d2' }}>Audit Trail</Typography>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            {loadingAuditTrail ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <Box sx={{ p: 2, textAlign: 'center' }}>
-                <Typography color="textSecondary">
-                  No changes have been made to this object.
-                  Latest revision: {latestRevision}
-                </Typography>
-              </Box>
-            )}
-          </AccordionDetails>
-        </Accordion>
-      );
-    }
 
     return (
       <Accordion sx={{ mt: 2 }}>
@@ -692,32 +823,86 @@ const LogisticsObjectView = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <EventIcon sx={{ color: '#1976d2' }} />
             <Typography sx={{ color: '#1976d2' }}>
-              Audit Trail {changeRequests.length > 0 && `(${changeRequests.length})`}
+              Audit Trail {filteredChangeRequests.length > 0 && `(${filteredChangeRequests.length})`}
             </Typography>
           </Box>
         </AccordionSummary>
         <AccordionDetails>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+            <TextField
+              label="Updated From"
+              type="datetime-local"
+              size="small"
+              value={auditFilters.updatedFrom}
+              onChange={(e) => setAuditFilters((prev) => ({ ...prev, updatedFrom: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Updated To"
+              type="datetime-local"
+              size="small"
+              value={auditFilters.updatedTo}
+              onChange={(e) => setAuditFilters((prev) => ({ ...prev, updatedTo: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              select
+              label="Status"
+              size="small"
+              sx={{ minWidth: 170 }}
+              value={auditFilters.status}
+              onChange={(e) => setAuditFilters((prev) => ({ ...prev, status: e.target.value }))}
+            >
+              <MenuItem value="">All</MenuItem>
+              <MenuItem value="PENDING">Pending</MenuItem>
+              <MenuItem value="ACCEPTED">Accepted</MenuItem>
+              <MenuItem value="REJECTED">Rejected</MenuItem>
+            </TextField>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setAppliedAuditFilters(auditFilters)}
+              disabled={loadingAuditTrail}
+            >
+              Apply Filters
+            </Button>
+            <Button
+              variant="text"
+              size="small"
+              onClick={() => {
+                const reset = { updatedFrom: '', updatedTo: '', status: '' };
+                setAuditFilters(reset);
+                setAppliedAuditFilters(reset);
+              }}
+              disabled={loadingAuditTrail}
+            >
+              Reset
+            </Button>
+          </Box>
           {loadingAuditTrail ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
               <CircularProgress />
             </Box>
-          ) : changeRequests.length === 0 ? (
+          ) : filteredChangeRequests.length === 0 ? (
             <Box sx={{ p: 2, textAlign: 'center' }}>
               <Typography color="textSecondary">
-                No changes have been made to this object.
+                No change requests match the selected filters.
                 Latest revision: {latestRevision}
               </Typography>
             </Box>
           ) : (
             <Timeline>
-              {changeRequests.map((request) => {
+              {filteredChangeRequests.map((request) => {
                 const changeId = unwrapId(getField(request, 'hasChange')) || request.changeId;
                 const change = changes.find(c => c['@id'] === changeId);
+                const requestUrl = request['@id'];
 
                 const timestamp = unwrapScalar(getField(request, 'isRequestedAt')) || request.requestedAt || request.createdAt || Date.now();
-                const statusId = unwrapId(getField(request, 'hasRequestStatus')) || request.status || 'REQUEST_PENDING';
+                const statusId = normalizeRequestStatus(unwrapId(getField(request, 'hasRequestStatus')) || request.status || 'REQUEST_PENDING');
                 const description = unwrapScalar(getField(change, 'hasDescription')) || change?.description || 'Change Request';
                 const revision = String(unwrapScalar(getField(change, 'hasRevision')) || change?.revision || '1');
+                const isPending = statusId === 'REQUEST_PENDING';
+                const isProcessing = Boolean(processingActions[requestUrl]);
                 
                 return (
                   <TimelineItem key={request['@id']}>
@@ -746,6 +931,36 @@ const LogisticsObjectView = () => {
                           />
                         </Box>
                         {renderChangeRequestLink(request['@id'])}
+                        {isPending && (
+                          <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color="success"
+                              disabled={isProcessing}
+                              onClick={() => updateRequestStatus(requestUrl, 'ACCEPTED')}
+                            >
+                              Accept
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color="error"
+                              disabled={isProcessing}
+                              onClick={() => updateRequestStatus(requestUrl, 'REJECTED')}
+                            >
+                              Reject
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              disabled={isProcessing}
+                              onClick={() => revokeRequest(requestUrl)}
+                            >
+                              Revoke
+                            </Button>
+                          </Box>
+                        )}
                       </Paper>
                     </TimelineContent>
                   </TimelineItem>
