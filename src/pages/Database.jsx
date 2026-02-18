@@ -21,7 +21,8 @@ import {
   TextField,
   InputAdornment,
   Tooltip,
-  Button
+  Button,
+  TablePagination
 } from '@mui/material';
 import {
   LocalShipping as LocalShippingIcon,
@@ -63,6 +64,7 @@ const TABLE_STYLES = {
     }
   }
 };
+const ROWS_PER_PAGE = 25;
 
 const cleanupItem = (item) => {
   
@@ -93,6 +95,8 @@ const Database = ({ isAuthenticated = true }) => {
   const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false);
   const [selectedObjectForSubscription, setSelectedObjectForSubscription] = useState(null);
   const [settingsValid, setSettingsValid] = useState(false);
+  const [page, setPage] = useState(0);
+  const [externalPage, setExternalPage] = useState(0);
 
   useEffect(() => {
     const { isValid } = validateSettings();
@@ -214,6 +218,7 @@ const Database = ({ isAuthenticated = true }) => {
     }
 
     setFilteredData(filtered);
+    setPage(0);
   }, [data, selectedType, searchId]);
 
   useEffect(() => {
@@ -249,6 +254,31 @@ const Database = ({ isAuthenticated = true }) => {
     setExternalObjects(updatedObjects);
     localStorage.setItem('externalLogisticsObjects', JSON.stringify(updatedObjects));
   };
+
+  const handleChangePage = (_, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleExternalChangePage = (_, newPage) => {
+    setExternalPage(newPage);
+  };
+
+  const paginatedData = filteredData.slice(
+    page * ROWS_PER_PAGE,
+    page * ROWS_PER_PAGE + ROWS_PER_PAGE
+  );
+
+  const paginatedExternalData = externalObjects.slice(
+    externalPage * ROWS_PER_PAGE,
+    externalPage * ROWS_PER_PAGE + ROWS_PER_PAGE
+  );
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(externalObjects.length / ROWS_PER_PAGE) - 1);
+    if (externalPage > maxPage) {
+      setExternalPage(maxPage);
+    }
+  }, [externalObjects, externalPage]);
 
   return (
     <Box>
@@ -360,7 +390,7 @@ const Database = ({ isAuthenticated = true }) => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredData.map((row) => (
+                {paginatedData.map((row) => (
                   <TableRow key={row.id} hover>
                     <TableCell>{row.id}</TableCell>
                     <TableCell>
@@ -418,6 +448,14 @@ const Database = ({ isAuthenticated = true }) => {
                 ))}
               </TableBody>
             </Table>
+            <TablePagination
+              component="div"
+              count={filteredData.length}
+              page={page}
+              onPageChange={handleChangePage}
+              rowsPerPage={ROWS_PER_PAGE}
+              rowsPerPageOptions={[ROWS_PER_PAGE]}
+            />
           </TableContainer>
         )}
       </Paper>
@@ -448,7 +486,7 @@ const Database = ({ isAuthenticated = true }) => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {externalObjects.map((row) => (
+                {paginatedExternalData.map((row) => (
                   <TableRow key={row.id} hover>
                     <TableCell>{row.server}</TableCell>
                     <TableCell>{row.id}</TableCell>
@@ -506,6 +544,14 @@ const Database = ({ isAuthenticated = true }) => {
                 ))}
               </TableBody>
             </Table>
+            <TablePagination
+              component="div"
+              count={externalObjects.length}
+              page={externalPage}
+              onPageChange={handleExternalChangePage}
+              rowsPerPage={ROWS_PER_PAGE}
+              rowsPerPageOptions={[ROWS_PER_PAGE]}
+            />
           </TableContainer>
         )}
       </Paper>

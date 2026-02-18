@@ -437,11 +437,10 @@ const FormField = memo(({ field, value, onChange }) => {
   );
 });
 
-const LogisticsObjectForm = ({ objectType, initialData, onSubmit }) => {
+const LogisticsObjectForm = ({ objectType, initialData, onSubmit, debounceMs = 500 }) => {
   const [formData, setFormData] = useState(initialData || {});
   const [formStructure, setFormStructure] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [debouncedFormData, setDebouncedFormData] = useState(formData);
 
   // Load form structure
   useEffect(() => {
@@ -467,18 +466,19 @@ const LogisticsObjectForm = ({ objectType, initialData, onSubmit }) => {
     }
   }, [objectType]);
 
-  // Debounce form data updates
+  // Push form data to the parent immediately or with a debounce, depending on caller needs.
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedFormData(formData);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [formData]);
+    if (debounceMs === 0) {
+      onSubmit(formData);
+      return undefined;
+    }
 
-  // Only call onSubmit when debounced data changes
-  useEffect(() => {
-    onSubmit(debouncedFormData);
-  }, [debouncedFormData, onSubmit]);
+    const timer = setTimeout(() => {
+      onSubmit(formData);
+    }, debounceMs);
+
+    return () => clearTimeout(timer);
+  }, [debounceMs, formData, onSubmit]);
 
   const handleFieldChange = (fieldName, value, fieldDataType, fieldType) => {
     // If it's an array, return the value directly as it's already processed
