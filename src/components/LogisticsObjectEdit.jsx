@@ -198,11 +198,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
                 "api:op": { "@id": "api:ADD" },
                 "api:s": parentId,
                 "api:p": `https://onerecord.iata.org/ns/cargo#${propertyPath}`,
-                "api:o": [{
+                "api:o": {
                   "@type": "api:OperationObject",
                   "api:hasDatatype": propertySchema.valueIRI,
                   "api:hasValue": item['@value'] || item
-                }]
+                }
               });
             } else {
               // Handle object array elements
@@ -215,11 +215,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
                 "api:op": { "@id": "api:ADD" },
                 "api:s": parentId,
                 "api:p": `https://onerecord.iata.org/ns/cargo#${propertyPath}`,
-                "api:o": [{
+                "api:o": {
                   "@type": "api:OperationObject",
                   "api:hasDatatype": propertySchema.valueIRI,
                   "api:hasValue": itemId
-                }]
+                }
               });
 
               // Process nested properties if item has more than just @id
@@ -250,11 +250,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
               "api:op": { "@id": "api:ADD" },
               "api:s": parentId,
               "api:p": `https://onerecord.iata.org/ns/cargo#${propertyPath}`,
-              "api:o": [{
+              "api:o": {
                 "@type": "api:OperationObject",
                 "api:hasDatatype": propertySchema.valueIRI,
                 "api:hasValue": value['@value']
-              }]
+              }
             });
           } else {
             // Handle nested objects
@@ -265,11 +265,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
               "api:op": { "@id": "api:ADD" },
               "api:s": parentId,
               "api:p": `https://onerecord.iata.org/ns/cargo#${propertyPath}`,
-              "api:o": [{
+              "api:o": {
                 "@type": "api:OperationObject",
                 "api:hasDatatype": propertySchema.valueIRI,
                 "api:hasValue": objectId
-              }]
+              }
             });
 
             // Process nested properties
@@ -296,11 +296,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
             "api:op": { "@id": "api:ADD" },
             "api:s": parentId,
             "api:p": `https://onerecord.iata.org/ns/cargo#${propertyPath}`,
-            "api:o": [{
+            "api:o": {
               "@type": "api:OperationObject",
               "api:hasDatatype": propertySchema.valueIRI,
               "api:hasValue": value
-            }]
+            }
           });
         }
         
@@ -322,11 +322,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
                 "api:op": { "@id": "api:DELETE" },
                 "api:s": parentId,
                 "api:p": `https://onerecord.iata.org/ns/cargo#${propertyPath}`,
-                "api:o": [{
+                "api:o": {
                   "@type": "api:OperationObject",
                   "api:hasDatatype": propertySchema.valueIRI,
                   "api:hasValue": item
-                }]
+                }
               });
             } else {
               const itemId = item['@id'];
@@ -338,11 +338,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
                 "api:op": { "@id": "api:DELETE" },
                 "api:s": parentId,
                 "api:p": `https://onerecord.iata.org/ns/cargo#${propertyPath}`,
-                "api:o": [{
+                "api:o": {
                   "@type": "api:OperationObject",
                   "api:hasDatatype": propertySchema.valueIRI,
                   "api:hasValue": itemId
-                }]
+                }
               });
 
               // Delete nested properties
@@ -364,6 +364,22 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
             }
           });
         } else if (typeof value === 'object' && value !== null) {
+          if (value['@value'] !== undefined) {
+            // Handle typed literal values (e.g. booleans, integers, doubles, dateTime).
+            operations.push({
+              "@type": "api:Operation",
+              "api:op": { "@id": "api:DELETE" },
+              "api:s": parentId,
+              "api:p": `https://onerecord.iata.org/ns/cargo#${propertyPath}`,
+              "api:o": {
+                "@type": "api:OperationObject",
+                "api:hasDatatype": propertySchema.valueIRI,
+                "api:hasValue": value['@value']
+              }
+            });
+            return operations;
+          }
+
           const objectId = value['@id'];
           if (!objectId) return operations; // Skip if no ID
           
@@ -373,11 +389,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
             "api:op": { "@id": "api:DELETE" },
             "api:s": parentId,
             "api:p": `https://onerecord.iata.org/ns/cargo#${propertyPath}`,
-            "api:o": [{
+            "api:o": {
               "@type": "api:OperationObject",
               "api:hasDatatype": propertySchema.valueIRI,
               "api:hasValue": objectId
-            }]
+            }
           });
 
           // Delete nested properties
@@ -403,11 +419,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
             "api:op": { "@id": "api:DELETE" },
             "api:s": parentId,
             "api:p": `https://onerecord.iata.org/ns/cargo#${propertyPath}`,
-            "api:o": [{
+            "api:o": {
               "@type": "api:OperationObject",
               "api:hasDatatype": propertySchema.valueIRI,
               "api:hasValue": value
-            }]
+            }
           });
         }
         
@@ -463,7 +479,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
         "api:hasOperation": operations,
         "api:hasRevision": {
           "@type": "http://www.w3.org/2001/XMLSchema#positiveInteger",
-          "@value": String(latestRevision)
+          "@value": String(latestRevision + 1)
         }
       };
 

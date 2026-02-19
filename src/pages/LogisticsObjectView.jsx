@@ -938,7 +938,7 @@ const LogisticsObjectView = () => {
                               variant="contained"
                               color="success"
                               disabled={isProcessing}
-                              onClick={() => updateRequestStatus(requestUrl, 'ACCEPTED')}
+                              onClick={() => updateRequestStatus(requestUrl, 'REQUEST_ACCEPTED')}
                             >
                               Accept
                             </Button>
@@ -947,7 +947,7 @@ const LogisticsObjectView = () => {
                               variant="contained"
                               color="error"
                               disabled={isProcessing}
-                              onClick={() => updateRequestStatus(requestUrl, 'REJECTED')}
+                              onClick={() => updateRequestStatus(requestUrl, 'REQUEST_REJECTED')}
                             >
                               Reject
                             </Button>
