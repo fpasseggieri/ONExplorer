@@ -12,7 +12,27 @@ import {
   Alert,
   CircularProgress
 } from '@mui/material';
-import { apiCall, externalApiCall } from '../utils/api';
+import { apiCall } from '../utils/api';
+import { getExternalAccessToken } from '../utils/externalAuth';
+
+const decodeJwtPayload = (token) => {
+  if (!token || typeof token !== 'string') {
+    return null;
+  }
+
+  const parts = token.split('.');
+  if (parts.length < 2) {
+    return null;
+  }
+
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '=');
+    return JSON.parse(window.atob(padded));
+  } catch {
+    return null;
+  }
+};
 
 const SubscriptionDialog = ({ open, onClose, objectId }) => {
   const [selectedServer, setSelectedServer] = useState('');
@@ -27,16 +47,46 @@ const SubscriptionDialog = ({ open, onClose, objectId }) => {
       setLoading(true);
       setError(null);
       const serverConfig = servers.find(s => s.baseUrl === selectedServer);
-      const encodedTopic = encodeURIComponent(objectId);
-      
-      const externalResponse = await externalApiCall(
-        serverConfig.baseUrl,
-        `/subscriptions?topicType=https://onerecord.iata.org/ns/api%23LOGISTICS_OBJECT_IDENTIFIER&topic=${encodedTopic}`,
-        {
-          method: 'GET',
-          server: serverConfig
-        }
-      );
+      if (!serverConfig) {
+        throw new Error('Selected server configuration not found');
+      }
+
+      const externalToken = await getExternalAccessToken(serverConfig);
+      const tokenPayload = decodeJwtPayload(externalToken);
+      const subscriberUri =
+        tokenPayload?.logistics_agent_uri ||
+        `${serverConfig.baseUrl}/logistics-objects/_data-holder`;
+
+      const subscriptionPayload = {
+        "@context": {
+          "cargo": "https://onerecord.iata.org/ns/cargo#",
+          "api": "https://onerecord.iata.org/ns/api#"
+        },
+        "@type": "api:Subscription",
+        "api:hasContentType": "application/ld+json",
+        "api:hasSubscriber": {
+          "@id": subscriberUri
+        },
+        "api:hasTopicType": {
+          "@id": "api:LOGISTICS_OBJECT_IDENTIFIER"
+        },
+        "api:includeSubscriptionEventType": [
+          {
+            "@id": "api:LOGISTICS_OBJECT_UPDATED"
+          },
+          {
+            "@id": "api:LOGISTICS_OBJECT_CREATED"
+          },
+          {
+            "@id": "api:LOGISTICS_EVENT_RECEIVED"
+          }
+        ],
+        "api:hasTopic": {
+          "@type": "http://www.w3.org/2001/XMLSchema#anyURI",
+          "@value": objectId
+        },
+        "api:sendLogisticsObjectBody": false
+      };
 
       const internalResponse = await apiCall(
         '/subscriptions',
@@ -45,7 +95,7 @@ const SubscriptionDialog = ({ open, onClose, objectId }) => {
           headers: {
             'Content-Type': 'application/ld+json'
           },
-          body: JSON.stringify(externalResponse)
+          body: JSON.stringify(subscriptionPayload)
         }
       );
 

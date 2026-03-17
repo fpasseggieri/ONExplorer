@@ -66,6 +66,41 @@ const TABLE_STYLES = {
 };
 const ROWS_PER_PAGE = 25;
 
+const toFirst = (value) => (Array.isArray(value) ? value[0] : value);
+
+const unwrapScalar = (value) => {
+  const first = toFirst(value);
+  if (first === undefined || first === null) return '';
+  if (typeof first === 'object') {
+    if (first['@value'] !== undefined) return first['@value'];
+    if (first['@id'] !== undefined) return first['@id'];
+  }
+  return first;
+};
+
+const getCreatedAt = (item) => (
+  unwrapScalar(item['https://onerecord.iata.org/ns/cargo#creationDate']) ||
+  unwrapScalar(item['creationDate']) ||
+  unwrapScalar(item.createdAt) ||
+  unwrapScalar(item.requestTime) ||
+  ''
+);
+
+const getUpdatedAt = (item) => (
+  unwrapScalar(item.updatedAt) ||
+  unwrapScalar(item['updatedAt']) ||
+  unwrapScalar(item['https://onerecord.iata.org/ns/api#updatedAt']) ||
+  unwrapScalar(item['https://onerecord.iata.org/ns/cargo#updatedAt']) ||
+  ''
+);
+
+const formatDate = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+};
+
 const cleanupItem = (item) => {
   
   return {
@@ -74,6 +109,8 @@ const cleanupItem = (item) => {
         ? item['@type']
             .filter(t => t !== 'https://onerecord.iata.org/ns/cargo#LogisticsObject')[0]?.split('#').pop() 
         : 'test'|| 'Unknown Type',
+    createdAt: getCreatedAt(item),
+    updatedAt: getUpdatedAt(item),
     description: item['https://onerecord.iata.org/ns/cargo#description'] || 'No description available',
     // Add any other properties you need to clean up
   };
@@ -385,6 +422,8 @@ const Database = ({ isAuthenticated = true }) => {
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600 }}>ID</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Created At</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Updated At</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
                 </TableRow>
@@ -409,6 +448,8 @@ const Database = ({ isAuthenticated = true }) => {
                         }}
                       />
                     </TableCell>
+                    <TableCell>{formatDate(row.createdAt)}</TableCell>
+                    <TableCell>{formatDate(row.updatedAt)}</TableCell>
                     <TableCell>{row.description}</TableCell>
                     <TableCell align="right">
                       <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
