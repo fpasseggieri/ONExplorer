@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Checkbox,
   Chip,
   CircularProgress,
@@ -30,6 +31,7 @@ import {
 import {
   Check as CheckIcon,
   Close as CloseIcon,
+  ExpandMore as ExpandMoreIcon,
   Refresh as RefreshIcon,
   RemoveCircleOutline as RevokeIcon,
   Send as SendIcon,
@@ -926,12 +928,14 @@ const SubscriptionsNew = () => {
 
       <Grid container spacing={3}>
         <Grid item xs={12} lg={6}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent>
+          <Accordion disableGutters elevation={1} sx={{ borderRadius: 2 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <SectionHeader
                 title="Subscriber-Initiated Flow"
                 subtitle="Create a remote SubscriptionRequest with POST /subscriptions on the selected publisher server."
               />
+            </AccordionSummary>
+            <AccordionDetails>
               {postResult ? (
                 <Alert severity="success" sx={{ mb: 2 }}>
                   Created remote request at {postResult.location}
@@ -1059,17 +1063,19 @@ const SubscriptionsNew = () => {
                   </Button>
                 </Box>
               </Stack>
-            </CardContent>
-          </Card>
+            </AccordionDetails>
+          </Accordion>
         </Grid>
 
         <Grid item xs={12} lg={6}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent>
+          <Accordion disableGutters elevation={1} sx={{ borderRadius: 2 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <SectionHeader
                 title="Publisher-Initiated Flow"
                 subtitle="Fetch subscriber subscription info with GET /subscriptions, validate it, then create a local request."
               />
+            </AccordionSummary>
+            <AccordionDetails>
               {previewError ? (
                 <Alert severity="error" sx={{ mb: 2 }}>
                   {previewError}
@@ -1177,8 +1183,8 @@ const SubscriptionsNew = () => {
                   </Stack>
                 </>
               ) : null}
-            </CardContent>
-          </Card>
+            </AccordionDetails>
+          </Accordion>
         </Grid>
       </Grid>
 
