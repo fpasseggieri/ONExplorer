@@ -8,7 +8,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Alert
+  Alert,
+  FormControl,
+  MenuItem,
+  Select
 } from '@mui/material';
 import LogisticsObjectForm from './LogisticsObjectForm';
 import jsonld from 'jsonld';
@@ -22,6 +25,10 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
   const [formData, setFormData] = useState(null);
   const [latestRevision, setLatestRevision] = useState(1);
   const [schemaData, setSchemaData] = useState(null);
+  const [changeMode, setChangeMode] = useState('AUTO');
+
+  const internalBaseUrl = localStorage.getItem('baseUrl');
+  const isInternalEdit = serverDetails.baseUrl === internalBaseUrl;
 
   const resolveTokenForBaseUrl = useCallback(async (targetBaseUrl) => {
     const internalBaseUrl = localStorage.getItem('baseUrl');
@@ -176,9 +183,41 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
     }
   }, [originalData, objectType]);
 
+  const getCreatedActionRequestLocation = (response) => {
+    const locationHeader = response.headers.get('Location') || response.headers.get('location');
+    if (!locationHeader) {
+      throw new Error('The server did not return a Location header for the created change request');
+    }
+    return locationHeader;
+  };
+
+  const approveCreatedChangeRequest = async (requestUrl) => {
+    const requestId = requestUrl.includes('/action-requests/')
+      ? requestUrl.split('/action-requests/')[1]
+      : '';
+
+    if (!requestId) {
+      throw new Error(`Unexpected action request location: ${requestUrl}`);
+    }
+
+    const resolvedToken = await resolveTokenForBaseUrl(serverDetails.baseUrl);
+    const response = await fetch(`${serverDetails.baseUrl}/action-requests/${requestId}?status=${encodeURIComponent('REQUEST_ACCEPTED')}`, {
+      method: 'PATCH',
+      headers: {
+        'Accept': 'application/ld+json',
+        'Authorization': `Bearer ${resolvedToken}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Change request created, but automatic approval failed: ${response.statusText}`);
+    }
+  };
+
   const handleSubmit = async () => {
     try {
       setLoading(true);
+      setError(null);
       const operations = [];
       
       const generateFakeId = () => `_:b${Math.random().toString(36).substr(2, 9)}`;
@@ -498,6 +537,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
         throw new Error(`Failed to update object: ${response.statusText}`);
       }
 
+      if (isInternalEdit && changeMode === 'AUTO') {
+        const requestLocation = getCreatedActionRequestLocation(response);
+        await approveCreatedChangeRequest(requestLocation);
+      }
+
       // Close the dialog on success
       onClose();
     } catch (err) {
@@ -541,15 +585,40 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
           />
         )}
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button 
-          onClick={handleSubmit} 
-          variant="contained" 
-          disabled={loading || !schemaData || JSON.stringify(originalData) === JSON.stringify(formData)}
-        >
-          Submit Changes
-        </Button>
+      <DialogActions sx={{ justifyContent: 'space-between', alignItems: 'center', px: 3, py: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minHeight: 40 }}>
+          {isInternalEdit && (
+            <>
+
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <Select
+                  value={changeMode}
+                  onChange={(event) => setChangeMode(event.target.value)}
+                  displayEmpty
+                >
+                  <MenuItem value="AUTO">AUTO</MenuItem>
+                  <MenuItem value="MANUAL">MANUAL</MenuItem>
+                </Select>
+              </FormControl>
+              <Typography variant="body2" sx={{ fontWeight: 500, ml: 1 }}>
+                Approval
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {changeMode === 'AUTO' ? 'REQUEST_ACCEPTED' : 'REQUEST_PENDING'}
+              </Typography>
+            </>
+          )}
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            onClick={handleSubmit}
+            variant="contained"
+            disabled={loading || !schemaData || JSON.stringify(originalData) === JSON.stringify(formData)}
+          >
+            Submit Changes
+          </Button>
+        </Box>
       </DialogActions>
     </Dialog>
   );
