@@ -16,6 +16,8 @@ import {
   DialogActions,
   TextField,
   MenuItem,
+  Checkbox,
+  FormControlLabel,
   IconButton,
   Tooltip,
   Switch,
@@ -43,7 +45,9 @@ import {
   Event as EventIcon,
   ExpandMore as ExpandMoreIcon,
   Code as CodeIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  Group as GroupIcon,
+  NotificationsActive as NotificationsActiveIcon
 } from '@mui/icons-material';
 import jsonld from 'jsonld';
 import Accordion from '@mui/material/Accordion';
@@ -80,6 +84,12 @@ const EVENT_TIME_TYPES = [
   { value: 'EXPECTED', label: 'Expected' },
   { value: 'PLANNED', label: 'Planned' },
   { value: 'REQUESTED', label: 'Requested' }
+];
+
+const SUBSCRIPTION_EVENT_TYPES = [
+  'LOGISTICS_OBJECT_CREATED',
+  'LOGISTICS_OBJECT_UPDATED',
+  'LOGISTICS_EVENT_RECEIVED'
 ];
 
 // Add this function before the component
@@ -200,6 +210,112 @@ const toAuditTrailTimestamp = (localDateTime) => {
   return `${datePart.replace(/-/g, '')}T${timePart.replace(/:/g, '')}Z`;
 };
 
+const normalizeApiEnumValue = (value) => {
+  const raw = unwrapScalar(value) || unwrapId(value) || value;
+  if (!raw) return '';
+  const normalized = String(raw);
+  if (normalized.includes('#')) return normalized.split('#').pop();
+  if (normalized.includes(':')) return normalized.split(':').pop();
+  return normalized;
+};
+
+const formatDateTime = (value) => {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+};
+
+const formatBooleanLabel = (value) => {
+  if (value === true) return 'Yes';
+  if (value === false) return 'No';
+  return '-';
+};
+
+const decodeJwtPayload = (token) => {
+  if (!token || typeof token !== 'string') {
+    return null;
+  }
+
+  const parts = token.split('.');
+  if (parts.length < 2) {
+    return null;
+  }
+
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '=');
+    return JSON.parse(window.atob(padded));
+  } catch {
+    return null;
+  }
+};
+
+const readConfiguredExternalServers = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('externalServers') || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const createInitialSubscriptionForm = (servers = []) => ({
+  subscriberServerBaseUrl: servers.length === 1 ? servers[0].baseUrl : '',
+  description: '',
+  expiresAt: '',
+  notifyRequestStatusChange: true,
+  sendLogisticsObjectBody: false,
+  eventTypes: [...SUBSCRIPTION_EVENT_TYPES]
+});
+
+const buildSubscriptionPayload = ({
+  topic,
+  subscriber,
+  eventTypes,
+  sendLogisticsObjectBody,
+  notifyRequestStatusChange,
+  description,
+  expiresAt
+}) => {
+  const payload = {
+    '@context': {
+      cargo: 'https://onerecord.iata.org/ns/cargo#',
+      api: API_NS
+    },
+    '@type': 'api:Subscription',
+    'api:hasContentType': 'application/ld+json',
+    'api:hasSubscriber': {
+      '@id': subscriber
+    },
+    'api:hasTopicType': {
+      '@id': 'api:LOGISTICS_OBJECT_IDENTIFIER'
+    },
+    'api:includeSubscriptionEventType': eventTypes.map((eventType) => ({
+      '@id': `api:${eventType}`
+    })),
+    'api:hasTopic': {
+      '@type': 'http://www.w3.org/2001/XMLSchema#anyURI',
+      '@value': topic
+    },
+    'api:sendLogisticsObjectBody': Boolean(sendLogisticsObjectBody),
+    'api:notifyRequestStatusChange': Boolean(notifyRequestStatusChange)
+  };
+
+  if (description.trim()) {
+    payload['api:hasDescription'] = description.trim();
+  }
+
+  if (expiresAt) {
+    payload['api:expiresAt'] = {
+      '@type': 'http://www.w3.org/2001/XMLSchema#dateTime',
+      '@value': new Date(expiresAt).toISOString()
+    };
+  }
+
+  return payload;
+};
+
 const LogisticsObjectView = () => {
   const { id } = useParams();
   const location = useLocation();
@@ -220,6 +336,14 @@ const LogisticsObjectView = () => {
   });
   const [events, setEvents] = useState([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
+  const [subscribers, setSubscribers] = useState([]);
+  const [loadingSubscribers, setLoadingSubscribers] = useState(true);
+  const [subscribersError, setSubscribersError] = useState(null);
+  const [openSubscriptionDialog, setOpenSubscriptionDialog] = useState(false);
+  const [creatingSubscription, setCreatingSubscription] = useState(false);
+  const [createSubscriptionError, setCreateSubscriptionError] = useState(null);
+  const configuredExternalServers = readConfiguredExternalServers();
+  const [subscriptionForm, setSubscriptionForm] = useState(() => createInitialSubscriptionForm(configuredExternalServers));
   const [auditTrail, setAuditTrail] = useState(null);
   const [loadingAuditTrail, setLoadingAuditTrail] = useState(false);
   const [auditFilters, setAuditFilters] = useState({
@@ -256,6 +380,12 @@ const LogisticsObjectView = () => {
 
   // Add this to determine if the object is external
   const isExternalObject = serverUrl !== localStorage.getItem('baseUrl');
+  const logisticsObjectId = id.includes('logistics-objects/')
+    ? id.split('logistics-objects/')[1]
+    : id;
+  const logisticsObjectIri = serverUrl && logisticsObjectId
+    ? `${serverUrl}/logistics-objects/${logisticsObjectId}`
+    : '';
 
   const fetchObjectData = useCallback(async () => {
     try {
@@ -407,6 +537,182 @@ const LogisticsObjectView = () => {
     }
   }, [getRequestToken, id, serverUrl]);
 
+  const fetchSubscribers = useCallback(async () => {
+    if (!serverUrl || !logisticsObjectIri) {
+      setSubscribers([]);
+      setLoadingSubscribers(false);
+      setSubscribersError(null);
+      return;
+    }
+
+    try {
+      setLoadingSubscribers(true);
+      setSubscribersError(null);
+      const requestToken = await getRequestToken();
+      const pageSize = 200;
+      let offset = 0;
+      let hasMore = true;
+      const collectedItems = [];
+
+      while (hasMore) {
+        const query = new URLSearchParams({
+          status: 'ACTIVE',
+          limit: String(pageSize),
+          offset: String(offset)
+        });
+
+        const response = await fetch(`${serverUrl}/logistics-objects/internal/_subscriptions?${query.toString()}`, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${requestToken}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch subscribers: ${response.statusText}`);
+        }
+
+        const payload = await response.json();
+        const items = Array.isArray(payload?.items) ? payload.items : [];
+        collectedItems.push(...items);
+        hasMore = items.length === pageSize;
+        offset += pageSize;
+      }
+
+      const seenKeys = new Set();
+      const filteredSubscribers = collectedItems
+        .filter((item) => normalizeApiEnumValue(item.topicType) === 'LOGISTICS_OBJECT_IDENTIFIER')
+        .filter((item) => item.topic === logisticsObjectIri)
+        .map((item) => {
+          const eventTypes = normalizeToArray(item.includeSubscriptionEventTypes || item.eventTypes)
+            .map((entry) => normalizeApiEnumValue(entry))
+            .filter(Boolean);
+
+          return {
+            key: item.iri || `${item.subscriberIri || item.subscriber}-${item.callbackUrl || item.topic}`,
+            subscriberIri: item.subscriberIri || item.subscriber || '-',
+            callbackUrl: item.callbackUrl || '',
+            status: item.status || '-',
+            topic: item.topic || '-',
+            topicType: normalizeApiEnumValue(item.topicType) || '-',
+            createdAt: item.createdAt || '',
+            expiresAt: item.expiresAt || '',
+            contentTypes: normalizeToArray(item.contentTypes || item.hasContentType || item.contentType).filter(Boolean),
+            includeSubscriptionEventTypes: eventTypes,
+            sendLogisticsObjectBody: item.sendLogisticsObjectBody,
+            notifyRequestStatusChange: item.notifyRequestStatusChange
+          };
+        })
+        .filter((item) => {
+          if (seenKeys.has(item.key)) return false;
+          seenKeys.add(item.key);
+          return true;
+        })
+        .sort((left, right) => {
+          const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+          const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+          return rightTime - leftTime;
+        });
+
+      setSubscribers(filteredSubscribers);
+    } catch (err) {
+      console.error('Error fetching subscribers:', err);
+      setSubscribers([]);
+      setSubscribersError(err.message || 'Failed to load subscribers');
+    } finally {
+      setLoadingSubscribers(false);
+    }
+  }, [getRequestToken, logisticsObjectIri, serverUrl]);
+
+  const handleOpenSubscriptionDialog = () => {
+    setSubscriptionForm(createInitialSubscriptionForm(configuredExternalServers));
+    setCreateSubscriptionError(null);
+    setOpenSubscriptionDialog(true);
+  };
+
+  const handleCloseSubscriptionDialog = () => {
+    if (creatingSubscription) {
+      return;
+    }
+    setOpenSubscriptionDialog(false);
+    setCreateSubscriptionError(null);
+  };
+
+  const toggleSubscriptionEventType = (eventType) => {
+    setSubscriptionForm((current) => {
+      const eventTypes = current.eventTypes.includes(eventType)
+        ? current.eventTypes.filter((entry) => entry !== eventType)
+        : [...current.eventTypes, eventType];
+
+      return {
+        ...current,
+        eventTypes
+      };
+    });
+  };
+
+  const handleCreateSubscription = async () => {
+    try {
+      setCreatingSubscription(true);
+      setCreateSubscriptionError(null);
+
+      if (!subscriptionForm.subscriberServerBaseUrl) {
+        throw new Error('Select the subscriber server');
+      }
+
+      if (subscriptionForm.eventTypes.length === 0) {
+        throw new Error('Select at least one subscription event type');
+      }
+
+      const subscriberServer = getExternalServerByBaseUrl(subscriptionForm.subscriberServerBaseUrl);
+      if (!subscriberServer) {
+        throw new Error('Subscriber server configuration not found');
+      }
+
+      const subscriberToken = await getExternalAccessToken(subscriberServer);
+      const subscriberTokenPayload = decodeJwtPayload(subscriberToken);
+      const subscriberUri =
+        subscriberTokenPayload?.logistics_agent_uri ||
+        `${subscriberServer.baseUrl}/logistics-objects/_data-holder`;
+
+      const payload = buildSubscriptionPayload({
+        topic: logisticsObjectIri,
+        subscriber: subscriberUri,
+        eventTypes: subscriptionForm.eventTypes,
+        sendLogisticsObjectBody: subscriptionForm.sendLogisticsObjectBody,
+        notifyRequestStatusChange: subscriptionForm.notifyRequestStatusChange,
+        description: subscriptionForm.description,
+        expiresAt: subscriptionForm.expiresAt
+      });
+
+      const requestToken = await getRequestToken();
+      const response = await fetch(`${serverUrl}/subscriptions`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/ld+json; version=2.2.0',
+          'Content-Type': 'application/ld+json; version=2.2.0',
+          Authorization: `Bearer ${requestToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Failed to create subscription: ${response.statusText}`);
+      }
+
+      setOpenSubscriptionDialog(false);
+      setSubscriptionForm(createInitialSubscriptionForm(configuredExternalServers));
+      await fetchSubscribers();
+    } catch (err) {
+      console.error('Error creating subscription:', err);
+      setCreateSubscriptionError(err.message || 'Failed to create subscription');
+    } finally {
+      setCreatingSubscription(false);
+    }
+  };
+
   const fetchAuditTrail = useCallback(async () => {
     try {
       setLoadingAuditTrail(true);
@@ -491,7 +797,8 @@ const LogisticsObjectView = () => {
     }
     fetchObjectData();
     fetchEvents();
-  }, [fetchEvents, fetchObjectData, serverUrl]);
+    fetchSubscribers();
+  }, [fetchEvents, fetchObjectData, fetchSubscribers, serverUrl]);
 
   useEffect(() => {
     if (!serverUrl) {
@@ -506,7 +813,7 @@ const LogisticsObjectView = () => {
 
   // Refresh object details and related sections in place
   const handleRefresh = async () => {
-    await Promise.all([fetchObjectData(), fetchEvents(), fetchAuditTrail()]);
+    await Promise.all([fetchObjectData(), fetchEvents(), fetchSubscribers(), fetchAuditTrail()]);
   };
 
   const getActionRequestEndpoint = (requestUrl) => {
@@ -1064,6 +1371,322 @@ const LogisticsObjectView = () => {
     );
   };
 
+  const renderSubscribers = () => {
+    const selectedSubscriberServer = configuredExternalServers.find(
+      (server) => server.baseUrl === subscriptionForm.subscriberServerBaseUrl
+    );
+    const subscriberPreviewUri = selectedSubscriberServer
+      ? `${selectedSubscriberServer.baseUrl}/logistics-objects/_data-holder`
+      : '';
+
+    if (loadingSubscribers) {
+      return (
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+            <CircularProgress />
+          </Box>
+        </Paper>
+      );
+    }
+
+    return (
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, mb: 2 }}>
+          <Box>
+            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <GroupIcon color="primary" />
+              Subscribers {subscribers.length > 0 && `(${subscribers.length})`}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Active subscription records for this Logistics Object where topic type is
+              {' '}<strong>LOGISTICS_OBJECT_IDENTIFIER</strong>.
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<SendIcon />}
+            onClick={handleOpenSubscriptionDialog}
+            disabled={configuredExternalServers.length === 0}
+          >
+            Add Subscription
+          </Button>
+        </Box>
+
+        {subscribersError && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {subscribersError}
+          </Alert>
+        )}
+
+        {configuredExternalServers.length === 0 && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Configure at least one external server in Settings to create a subscription for this Logistics Object.
+          </Alert>
+        )}
+
+        {subscribers.length === 0 ? (
+          <Box
+            sx={{
+              p: 3,
+              textAlign: 'center',
+              bgcolor: 'background.paper',
+              borderRadius: 1,
+              border: '1px solid #e0e0e0'
+            }}
+          >
+            <GroupIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
+            <Typography color="textSecondary">
+              No active subscribers are registered for this Logistics Object.
+            </Typography>
+            <Typography variant="caption" color="textSecondary">
+              ONE Record specific-object subscriptions use this object IRI as the topic.
+            </Typography>
+          </Box>
+        ) : (
+          <Stack spacing={2}>
+            {subscribers.map((subscriber) => {
+              const receivesEvents = subscriber.includeSubscriptionEventTypes.includes('LOGISTICS_EVENT_RECEIVED');
+
+              return (
+                <Paper
+                  key={subscriber.key}
+                  variant="outlined"
+                  sx={{ p: 2.5, backgroundColor: '#f8f9fa' }}
+                >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 1.5 }}>
+                    <Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600, wordBreak: 'break-all' }}>
+                        {subscriber.subscriberIri}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Created: {formatDateTime(subscriber.createdAt)}
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                      <Chip label={subscriber.status} size="small" color="primary" variant="outlined" />
+                      <Chip label={subscriber.topicType} size="small" variant="outlined" />
+                      {receivesEvents && (
+                        <Chip
+                          icon={<NotificationsActiveIcon />}
+                          label="Receives logistics events"
+                          size="small"
+                          color="success"
+                        />
+                      )}
+                    </Stack>
+                  </Box>
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="caption" color="text.secondary">Callback URL</Typography>
+                      {subscriber.callbackUrl ? (
+                        <Link href={subscriber.callbackUrl} target="_blank" rel="noreferrer" sx={{ display: 'block', wordBreak: 'break-all' }}>
+                          {subscriber.callbackUrl}
+                        </Link>
+                      ) : (
+                        <Typography variant="body2">-</Typography>
+                      )}
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="caption" color="text.secondary">Topic</Typography>
+                      <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                        {subscriber.topic}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="caption" color="text.secondary">Content Type</Typography>
+                      <Typography variant="body2">
+                        {subscriber.contentTypes.length > 0 ? subscriber.contentTypes.join(', ') : '-'}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="caption" color="text.secondary">Expires At</Typography>
+                      <Typography variant="body2">{formatDateTime(subscriber.expiresAt)}</Typography>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="caption" color="text.secondary">Send Logistics Object Body</Typography>
+                      <Typography variant="body2">{formatBooleanLabel(subscriber.sendLogisticsObjectBody)}</Typography>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="caption" color="text.secondary">Notify Request Status Change</Typography>
+                      <Typography variant="body2">{formatBooleanLabel(subscriber.notifyRequestStatusChange)}</Typography>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Typography variant="caption" color="text.secondary">Included Subscription Event Types</Typography>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 0.5 }}>
+                        {subscriber.includeSubscriptionEventTypes.length === 0 ? (
+                          <Typography variant="body2">-</Typography>
+                        ) : (
+                          subscriber.includeSubscriptionEventTypes.map((eventType) => (
+                            <Chip
+                              key={`${subscriber.key}-${eventType}`}
+                              label={eventType}
+                              size="small"
+                              variant={eventType === 'LOGISTICS_EVENT_RECEIVED' ? 'filled' : 'outlined'}
+                              color={eventType === 'LOGISTICS_EVENT_RECEIVED' ? 'success' : 'default'}
+                            />
+                          ))
+                        )}
+                      </Stack>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              );
+            })}
+          </Stack>
+        )}
+
+        <Dialog
+          open={openSubscriptionDialog}
+          onClose={handleCloseSubscriptionDialog}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Add Subscription for Logistics Object</DialogTitle>
+          <DialogContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+              {createSubscriptionError && (
+                <Alert severity="error">
+                  {createSubscriptionError}
+                </Alert>
+              )}
+
+              <TextField
+                select
+                label="Subscriber Server"
+                value={subscriptionForm.subscriberServerBaseUrl}
+                onChange={(event) => setSubscriptionForm((current) => ({
+                  ...current,
+                  subscriberServerBaseUrl: event.target.value
+                }))}
+                helperText="The selected server identifies the subscriber organization."
+                fullWidth
+                required
+              >
+                {configuredExternalServers.map((server) => (
+                  <MenuItem key={server.baseUrl} value={server.baseUrl}>
+                    {server.name || server.baseUrl}
+                  </MenuItem>
+                ))}
+              </TextField>
+
+              <TextField
+                label="Topic"
+                value={logisticsObjectIri}
+                fullWidth
+                InputProps={{ readOnly: true }}
+                helperText="Fixed to the current Logistics Object IRI"
+              />
+
+              <TextField
+                label="Topic Type"
+                value="LOGISTICS_OBJECT_IDENTIFIER"
+                fullWidth
+                InputProps={{ readOnly: true }}
+              />
+
+              <TextField
+                label="Subscriber IRI Preview"
+                value={subscriberPreviewUri}
+                fullWidth
+                InputProps={{ readOnly: true }}
+                helperText="If the subscriber token exposes logistics_agent_uri, that value is used instead."
+              />
+
+              <TextField
+                label="Description"
+                value={subscriptionForm.description}
+                onChange={(event) => setSubscriptionForm((current) => ({
+                  ...current,
+                  description: event.target.value
+                }))}
+                fullWidth
+                multiline
+                rows={2}
+                helperText="Optional subscription description"
+              />
+
+              <TextField
+                label="Expires At"
+                type="datetime-local"
+                value={subscriptionForm.expiresAt}
+                onChange={(event) => setSubscriptionForm((current) => ({
+                  ...current,
+                  expiresAt: event.target.value
+                }))}
+                fullWidth
+                InputLabelProps={{
+                  shrink: true
+                }}
+                helperText="Optional expiration date and time"
+              />
+
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  Included Subscription Event Types
+                </Typography>
+                <Stack>
+                  {SUBSCRIPTION_EVENT_TYPES.map((eventType) => (
+                    <FormControlLabel
+                      key={eventType}
+                      control={(
+                        <Checkbox
+                          checked={subscriptionForm.eventTypes.includes(eventType)}
+                          onChange={() => toggleSubscriptionEventType(eventType)}
+                        />
+                      )}
+                      label={eventType}
+                    />
+                  ))}
+                </Stack>
+              </Box>
+
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={subscriptionForm.notifyRequestStatusChange}
+                    onChange={(event) => setSubscriptionForm((current) => ({
+                      ...current,
+                      notifyRequestStatusChange: event.target.checked
+                    }))}
+                  />
+                )}
+                label="Notify Request Status Change"
+              />
+
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={subscriptionForm.sendLogisticsObjectBody}
+                    onChange={(event) => setSubscriptionForm((current) => ({
+                      ...current,
+                      sendLogisticsObjectBody: event.target.checked
+                    }))}
+                  />
+                )}
+                label="Send Logistics Object Body"
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseSubscriptionDialog} disabled={creatingSubscription}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleCreateSubscription}
+              disabled={creatingSubscription || configuredExternalServers.length === 0}
+              startIcon={creatingSubscription ? <CircularProgress size={18} /> : <SendIcon />}
+            >
+              {creatingSubscription ? 'Creating...' : 'Create Subscription'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Paper>
+    );
+  };
+
   const getServerDetailsForUrl = (url) => {
     if (!url) return null;
     
@@ -1204,11 +1827,28 @@ const LogisticsObjectView = () => {
 
 
       {/* Dynamic Content View - Updated */}
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" sx={{ 
-          mb: 3, 
-          display: 'flex', 
-          alignItems: 'center', 
+	      <Paper sx={{ p: 3, mb: 3 }}>
+	        <Box
+	          sx={{
+	            mb: 3,
+	            p: 2,
+	            backgroundColor: '#f8f9fa',
+	            borderRadius: 2,
+	            border: '1px solid #e0e0e0'
+	          }}
+	        >
+	          <Typography variant="overline" color="text.secondary">
+	            LO GUID
+	          </Typography>
+	          <Typography variant="h6" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+	            {logisticsObjectId}
+	          </Typography>
+	        </Box>
+
+	        <Typography variant="h6" sx={{ 
+	          mb: 3, 
+	          display: 'flex', 
+	          alignItems: 'center', 
           gap: 1,
           color: '#1976d2'
         }}>
@@ -1257,6 +1897,9 @@ const LogisticsObjectView = () => {
           })}
         </Grid>
       </Paper>
+
+      {/* Subscribers Section */}
+      {renderSubscribers()}
 
       {/* Logistics Events Section */}
       {renderLogisticsEvents()}
