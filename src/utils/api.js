@@ -1,6 +1,8 @@
 import { getAccessToken } from '../auth/keycloak';
 import { getExternalAccessToken, getExternalServerByBaseUrl } from './externalAuth';
 
+export const AUTH_REQUIRED_MESSAGE = 'Authentication is required for this action. Sign in or verify your server configuration.';
+
 export class ApiError extends Error {
   constructor(message, status) {
     super(message);
@@ -8,13 +10,19 @@ export class ApiError extends Error {
   }
 }
 
-const getConfig = async () => {
+export const createAuthRequiredError = () => new ApiError(AUTH_REQUIRED_MESSAGE, 401);
+
+export const requireAccessToken = async () => {
   const token = await getAccessToken();
-  const baseUrl = localStorage.getItem('baseUrl');
-                 
   if (!token) {
-    throw new ApiError('No access token available. Please sign in again.', 401);
+    throw createAuthRequiredError();
   }
+  return token;
+};
+
+const getConfig = async () => {
+  const token = await requireAccessToken();
+  const baseUrl = localStorage.getItem('baseUrl');
 
   if (!baseUrl) {
     throw new ApiError('No API URL configured. Please configure in settings.', 500);

@@ -26,7 +26,7 @@ import {
   Notifications as NotificationsIcon
 } from '@mui/icons-material';
 import jsonld from 'jsonld';
-import { getAccessToken } from '../auth/keycloak';
+import { requireAccessToken } from '../utils/api';
 import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
 
 const ChangeRequestView = () => {
@@ -59,7 +59,7 @@ const ChangeRequestView = () => {
         const requestToken = serverDetails.token
           ? serverDetails.token
           : serverDetails.baseUrl === internalBaseUrl
-            ? await getAccessToken()
+            ? await requireAccessToken()
             : await getExternalAccessToken(getExternalServerByBaseUrl(serverDetails.baseUrl) || serverDetails.baseUrl);
         const response = await fetch(`${serverDetails.baseUrl}/action-requests/${id}`, {
           method: 'GET',

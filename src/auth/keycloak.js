@@ -4,6 +4,7 @@ import { getEnv } from '../utils/env';
 let initialized = false;
 let keycloak;
 let initPromise;
+let configSignature = '';
 const KEYCLOAK_PROBE_TIMEOUT_MS = 1500;
 
 const getRequiredEnv = (name) => {
@@ -14,13 +15,30 @@ const getRequiredEnv = (name) => {
   return value;
 };
 
+const getCurrentConfig = () => ({
+  url: getRequiredEnv('REACT_APP_KEYCLOAK_URL'),
+  realm: getRequiredEnv('REACT_APP_KEYCLOAK_REALM'),
+  clientId: getRequiredEnv('REACT_APP_KEYCLOAK_CLIENT_ID')
+});
+
+const getConfigSignature = (config) => JSON.stringify(config);
+
+export const resetAuthClient = () => {
+  initialized = false;
+  initPromise = null;
+  keycloak = undefined;
+  configSignature = '';
+};
+
 const getAuthClientOrThrow = () => {
-  if (!keycloak) {
-    keycloak = new Keycloak({
-      url: getRequiredEnv('REACT_APP_KEYCLOAK_URL'),
-      realm: getRequiredEnv('REACT_APP_KEYCLOAK_REALM'),
-      clientId: getRequiredEnv('REACT_APP_KEYCLOAK_CLIENT_ID')
-    });
+  const config = getCurrentConfig();
+  const nextSignature = getConfigSignature(config);
+
+  if (!keycloak || configSignature !== nextSignature) {
+    initialized = false;
+    initPromise = null;
+    keycloak = new Keycloak(config);
+    configSignature = nextSignature;
   }
 
   return keycloak;
@@ -66,7 +84,7 @@ export const initAuth = async () => {
       }
 
       const authenticated = await authClient.init({
-        onLoad: 'login-required',
+        onLoad: 'check-sso',
         pkceMethod: 'S256',
         checkLoginIframe: false
       });
@@ -85,11 +103,20 @@ export const getAccessToken = async () => {
   const authClient = getAuthClientOrThrow();
 
   if (!initialized) {
-    throw new Error('Authentication is not initialized');
+    const keycloakReachable = await probeKeycloakAvailability();
+    if (!keycloakReachable) {
+      return null;
+    }
+
+    await authClient.init({
+      onLoad: 'check-sso',
+      pkceMethod: 'S256',
+      checkLoginIframe: false
+    });
+    initialized = true;
   }
 
   if (!authClient.authenticated) {
-    await authClient.login();
     return null;
   }
 

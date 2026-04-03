@@ -53,7 +53,7 @@ import jsonld from 'jsonld';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
-import { getAccessToken } from '../auth/keycloak';
+import { requireAccessToken, createAuthRequiredError } from '../utils/api';
 import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
 
 
@@ -371,7 +371,7 @@ const LogisticsObjectView = () => {
     }
 
     if (!targetBaseUrl || targetBaseUrl === internalBaseUrl) {
-      return getAccessToken();
+      return requireAccessToken();
     }
 
     const externalServer = getExternalServerByBaseUrl(targetBaseUrl);
@@ -395,6 +395,9 @@ const LogisticsObjectView = () => {
         throw new Error('Server configuration not found');
       }
       const requestToken = await getRequestToken();
+      if (!requestToken) {
+        throw createAuthRequiredError();
+      }
 
       const response = await fetch(`${serverUrl}/logistics-objects/${id}`, {
         method: 'GET',
@@ -456,21 +459,18 @@ const LogisticsObjectView = () => {
     } catch (err) {
       console.error('Error in fetchObjectData:', err);
       setError(err.message);
-      
-      if (err.status === 401) {
-        navigate('/settings', { 
-          state: { message: 'Please check your server configuration.' }
-        });
-      }
     } finally {
       setLoading(false);
     }
-  }, [getRequestToken, id, navigate, serverUrl]);
+  }, [getRequestToken, id, serverUrl]);
 
   const fetchEvents = useCallback(async () => {
     try {
       setLoadingEvents(true);
       const requestToken = await getRequestToken();
+      if (!requestToken) {
+        throw createAuthRequiredError();
+      }
       const response = await fetch(`${serverUrl}/logistics-objects/${id}/logistics-events`, {
         headers: {
           'Accept': 'application/ld+json',
@@ -549,6 +549,9 @@ const LogisticsObjectView = () => {
       setLoadingSubscribers(true);
       setSubscribersError(null);
       const requestToken = await getRequestToken();
+      if (!requestToken) {
+        throw createAuthRequiredError();
+      }
       const pageSize = 200;
       let offset = 0;
       let hasMore = true;
@@ -687,6 +690,9 @@ const LogisticsObjectView = () => {
       });
 
       const requestToken = await getRequestToken();
+      if (!requestToken) {
+        throw createAuthRequiredError();
+      }
       const response = await fetch(`${serverUrl}/subscriptions`, {
         method: 'POST',
         headers: {
@@ -717,6 +723,9 @@ const LogisticsObjectView = () => {
     try {
       setLoadingAuditTrail(true);
       const requestToken = await getRequestToken();
+      if (!requestToken) {
+        throw createAuthRequiredError();
+      }
       const query = new URLSearchParams();
       const updatedFrom = toAuditTrailTimestamp(appliedAuditFilters.updatedFrom);
       const updatedTo = toAuditTrailTimestamp(appliedAuditFilters.updatedTo);
@@ -837,6 +846,9 @@ const LogisticsObjectView = () => {
     try {
       setProcessingActions((prev) => ({ ...prev, [requestUrl]: true }));
       const requestToken = await getRequestToken();
+      if (!requestToken) {
+        throw createAuthRequiredError();
+      }
       const response = await fetch(`${endpoint}?status=${encodeURIComponent(nextStatus)}`, {
         method: 'PATCH',
         headers: {
@@ -865,6 +877,9 @@ const LogisticsObjectView = () => {
     try {
       setProcessingActions((prev) => ({ ...prev, [requestUrl]: true }));
       const requestToken = await getRequestToken();
+      if (!requestToken) {
+        throw createAuthRequiredError();
+      }
       const response = await fetch(endpoint, {
         method: 'DELETE',
         headers: {
@@ -890,6 +905,9 @@ const LogisticsObjectView = () => {
     try {
       setSendingEvent(true);
       const requestToken = await getRequestToken();
+      if (!requestToken) {
+        throw createAuthRequiredError();
+      }
       const eventJsonLd = formatEventToJsonLd(eventData, id);
       
       const response = await fetch(`${serverUrl}/logistics-objects/${id}/logistics-events`, {

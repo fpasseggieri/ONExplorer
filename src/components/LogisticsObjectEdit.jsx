@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import LogisticsObjectForm from './LogisticsObjectForm';
 import jsonld from 'jsonld';
-import { getAccessToken } from '../auth/keycloak';
+import { requireAccessToken, createAuthRequiredError } from '../utils/api';
 import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
 
 const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) => {
@@ -39,7 +39,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
     }
 
     if (!targetBaseUrl || targetBaseUrl === internalBaseUrl) {
-      return getAccessToken();
+      return requireAccessToken();
     }
 
     const externalServer = getExternalServerByBaseUrl(targetBaseUrl);
@@ -70,7 +70,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
         const resolvedToken = await resolveTokenForBaseUrl(targetBaseUrl);
 
         if (!resolvedToken) {
-          throw new Error(`No authentication token available for ${targetBaseUrl}`);
+          throw createAuthRequiredError();
         }
 
         // Fetch the object data
