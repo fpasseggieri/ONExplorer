@@ -170,6 +170,7 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
     ...(settingsValid ? [
       { text: 'Create Object', icon: <AddIcon />, path: '/logistics-objects/create', requiresAuth: true },
       { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions', requiresAuth: true },
+      { text: 'Subscription New', icon: <SendIcon />, path: '/subscriptions-new', requiresAuth: true },
     ] : []),
     { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications', requiresAuth: true },
     { text: 'Notifications New', icon: <NotificationsIcon />, path: '/notifications-new', requiresAuth: true },

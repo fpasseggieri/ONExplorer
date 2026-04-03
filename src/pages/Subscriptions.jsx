@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
+  Chip,
   Typography,
   Paper,
   Table,
@@ -8,6 +9,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   Button,
   IconButton,
@@ -27,6 +29,7 @@ import {
   Add as AddIcon,
   Check as CheckIcon,
   Close as CloseIcon,
+  RemoveCircleOutline as RevokeIcon,
   Refresh as RefreshIcon,
   Send as SendIcon,
   Visibility as VisibilityIcon
@@ -94,15 +97,53 @@ const toValue = (value) => {
 
 const cleanSegment = (value) => {
   if (!value) return '';
-  if (value.includes('/')) return value.split('/').pop();
   if (value.includes('#')) return value.split('#').pop();
+  if (value.includes('/')) return value.split('/').pop();
   if (value.includes(':')) return value.split(':').pop();
   return value;
+};
+
+const formatRequest = (item) => {
+  const subscriptionNode = first(getApiField(item, 'hasSubscription'));
+  const statusId = toId(getApiField(item, 'hasRequestStatus'));
+  const requestedBy = toId(getApiField(item, 'isRequestedBy'));
+  const requestedAt = toValue(getApiField(item, 'isRequestedAt'));
+  const subscriptionRef = toId(subscriptionNode || getApiField(item, 'hasSubscription'));
+  const subscriptionSubscriber = toId(getApiField(subscriptionNode, 'hasSubscriber'));
+  const topic = toValue(getApiField(subscriptionNode, 'hasTopic'));
+
+  return {
+    id: cleanSegment(item['@id']),
+    status: cleanSegment(statusId) || 'UNKNOWN',
+    subscriber: subscriptionSubscriber || requestedBy || '-',
+    requestTime: requestedAt || '',
+    subscription: cleanSegment(subscriptionRef) || '-',
+    topic: topic || '-'
+  };
+};
+
+const normalizeExternalSubscriptionRecord = (item) => {
+  const actionRequestId = item.actionRequestId || item.subscriptionId || item.id || '';
+  return {
+    id: actionRequestId,
+    actionRequestId,
+    actionRequestUri: item.actionRequestUri || item.uri || '',
+    server: item.server || '',
+    serverId: item.serverId || '',
+    topic: item.topic || '-',
+    subscriber: item.subscriber || '-',
+    topicType: item.topicType || '',
+    requestTime: item.requestTime || item.requestedAt || item.createdAt || '',
+    status: item.status || 'UNKNOWN',
+    subscription: item.subscription || '-',
+    statusSource: item.statusSource || 'local'
+  };
 };
 
 const ActionButtons = ({ subscription, onStatusUpdate }) => {
   const navigate = useNavigate();
   const isPending = subscription.status === 'REQUEST_PENDING';
+  const isAccepted = subscription.status === 'REQUEST_ACCEPTED';
   
   return (
     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
@@ -116,7 +157,7 @@ const ActionButtons = ({ subscription, onStatusUpdate }) => {
         </IconButton>
       </Tooltip>
       
-      <Tooltip title={isPending ? "Approve" : "Already processed"}>
+      <Tooltip title={isPending ? "Approve" : "Available only for pending requests"}>
         <span>
           <IconButton
             color="success"
@@ -134,7 +175,7 @@ const ActionButtons = ({ subscription, onStatusUpdate }) => {
         </span>
       </Tooltip>
       
-      <Tooltip title={isPending ? "Reject" : "Already processed"}>
+      <Tooltip title={isPending ? "Reject" : "Available only for pending requests"}>
         <span>
           <IconButton
             color="error"
@@ -148,6 +189,24 @@ const ActionButtons = ({ subscription, onStatusUpdate }) => {
             }}
           >
             <CloseIcon />
+          </IconButton>
+        </span>
+      </Tooltip>
+
+      <Tooltip title={isAccepted ? "Revoke" : "Available only for accepted requests"}>
+        <span>
+          <IconButton
+            color="warning"
+            onClick={() => onStatusUpdate(subscription.id, 'REQUEST_REVOKED')}
+            disabled={!isAccepted}
+            sx={{
+              '&.Mui-disabled': {
+                backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                color: 'rgba(0, 0, 0, 0.26)'
+              }
+            }}
+          >
+            <RevokeIcon />
           </IconButton>
         </span>
       </Tooltip>
@@ -175,6 +234,11 @@ const Subscriptions = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [subscriptionToDelete, setSubscriptionToDelete] = useState(null);
   const [settingsValid, setSettingsValid] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [internalPage, setInternalPage] = useState(0);
+  const [internalRowsPerPage, setInternalRowsPerPage] = useState(10);
+  const [externalPage, setExternalPage] = useState(0);
+  const [externalRowsPerPage, setExternalRowsPerPage] = useState(10);
   
   // Add this helper function inside the component
   const isValidUrl = (string) => {
@@ -191,6 +255,11 @@ const Subscriptions = () => {
     setSettingsValid(isValid);
   }, []);
 
+  const persistExternalSubscriptions = useCallback((items) => {
+    localStorage.setItem('externalSubscriptions', JSON.stringify(items));
+    setExternalSubscriptions(items);
+  }, []);
+
   const fetchSubscriptions = useCallback(async () => {
     try {
       setLoading(true);
@@ -198,7 +267,7 @@ const Subscriptions = () => {
       
       const rawData = response['@graph'] ? response['@graph'] : [response];
       const cleanArray = rawData.filter(value => Object.keys(value).length !== 0);
-      const cleanedData = cleanArray.map(cleanupItem);
+      const cleanedData = cleanArray.map(formatRequest);
 
       const sortedSubscriptions = cleanedData.sort((a, b) => {
         return new Date(b.requestTime) - new Date(a.requestTime);
@@ -227,31 +296,106 @@ const Subscriptions = () => {
     loadServers();
   }, []);
 
+  const fetchExternalSubscriptions = useCallback(async () => {
+    const saved = JSON.parse(localStorage.getItem('externalSubscriptions') || '[]');
+    const normalized = saved.map(normalizeExternalSubscriptionRecord);
+
+    if (normalized.length === 0) {
+      setExternalSubscriptions([]);
+      return;
+    }
+
+    const hydrated = await Promise.all(normalized.map(async (item) => {
+      const server = servers.find((entry) => entry.id === item.serverId);
+      if (!server || !item.actionRequestId) {
+        return item;
+      }
+
+      try {
+        const response = await externalApiCall(server.baseUrl, `/action-requests/${item.actionRequestId}`, {
+          method: 'GET',
+          server
+        });
+        const parsed = formatRequest(response);
+        return {
+          ...item,
+          status: parsed.status,
+          requestTime: parsed.requestTime || item.requestTime,
+          subscriber: parsed.subscriber || item.subscriber,
+          subscription: parsed.subscription || item.subscription,
+          topic: parsed.topic || item.topic,
+          statusSource: 'remote'
+        };
+      } catch (err) {
+        return {
+          ...item,
+          statusSource: 'local'
+        };
+      }
+    }));
+
+    const sorted = hydrated.sort((a, b) => new Date(b.requestTime) - new Date(a.requestTime));
+    persistExternalSubscriptions(sorted);
+  }, [persistExternalSubscriptions, servers]);
+
   useEffect(() => {
-    // Load external subscriptions from localStorage
-    const loadExternalSubscriptions = () => {
-      const saved = JSON.parse(localStorage.getItem('externalSubscriptions') || '[]');
-      setExternalSubscriptions(saved);
-    };
-    loadExternalSubscriptions();
-  }, []);
+    fetchExternalSubscriptions();
+  }, [fetchExternalSubscriptions]);
 
-  const cleanupItem = (item) => {
-    const subscriptionNode = first(getApiField(item, 'hasSubscription'));
-    const statusId = toId(getApiField(item, 'hasRequestStatus'));
-    const requestedBy = toId(getApiField(item, 'isRequestedBy'));
-    const requestedAt = toValue(getApiField(item, 'isRequestedAt'));
-    const subscriptionRef = toId(subscriptionNode || getApiField(item, 'hasSubscription'));
-    const subscriptionSubscriber = toId(getApiField(subscriptionNode, 'hasSubscriber'));
+  useEffect(() => {
+    setInternalPage(0);
+    setExternalPage(0);
+  }, [statusFilter]);
 
-    return {
-      id: cleanSegment(item['@id']),
-      status: cleanSegment(statusId) || 'UNKNOWN',
-      subscriber: subscriptionSubscriber || requestedBy || '-',
-      requestTime: requestedAt || '',
-      subscription: cleanSegment(subscriptionRef) || '-'
-    };
+  useEffect(() => {
+    const filteredCount = subscriptions.filter((subscription) => {
+      if (statusFilter === 'ALL') return true;
+      if (statusFilter === 'NOT_APPROVED') return subscription.status !== 'REQUEST_ACCEPTED';
+      return subscription.status === statusFilter;
+    }).length;
+    const maxPage = Math.max(0, Math.ceil(filteredCount / internalRowsPerPage) - 1);
+    if (internalPage > maxPage) {
+      setInternalPage(maxPage);
+    }
+  }, [subscriptions, statusFilter, internalPage, internalRowsPerPage]);
+
+  useEffect(() => {
+    const filteredCount = externalSubscriptions.filter((subscription) => {
+      if (statusFilter === 'ALL') return true;
+      if (statusFilter === 'NOT_APPROVED') return subscription.status !== 'REQUEST_ACCEPTED';
+      return subscription.status === statusFilter;
+    }).length;
+    const maxPage = Math.max(0, Math.ceil(filteredCount / externalRowsPerPage) - 1);
+    if (externalPage > maxPage) {
+      setExternalPage(maxPage);
+    }
+  }, [externalSubscriptions, statusFilter, externalPage, externalRowsPerPage]);
+
+  const refreshAll = async () => {
+    if (settingsValid) {
+      await fetchSubscriptions();
+    }
+    await fetchExternalSubscriptions();
   };
+
+  const matchesStatusFilter = (status) => {
+    if (statusFilter === 'ALL') return true;
+    if (statusFilter === 'NOT_APPROVED') return status !== 'REQUEST_ACCEPTED';
+    return status === statusFilter;
+  };
+
+  const filteredInternalSubscriptions = subscriptions.filter((subscription) => matchesStatusFilter(subscription.status));
+  const filteredExternalSubscriptions = externalSubscriptions.filter((subscription) => matchesStatusFilter(subscription.status));
+
+  const pagedInternalSubscriptions = filteredInternalSubscriptions.slice(
+    internalPage * internalRowsPerPage,
+    internalPage * internalRowsPerPage + internalRowsPerPage
+  );
+
+  const pagedExternalSubscriptions = filteredExternalSubscriptions.slice(
+    externalPage * externalRowsPerPage,
+    externalPage * externalRowsPerPage + externalRowsPerPage
+  );
 
   const handleCreateSubscription = async () => {
     try {
@@ -311,22 +455,24 @@ const Subscriptions = () => {
         const locationHeader = response.headers.get('Location');
         if (locationHeader) {
             // Extract the subscription ID from the location header
-            const subscriptionId = locationHeader.split('/').pop();
+            const actionRequestId = locationHeader.split('/').pop();
             
             const newExternalSub = {
-                id: subscriptionId,
+                id: actionRequestId,
                 server: selectedServer.name,
                 serverId: selectedServer.id,
                 topic: newSubscription.topic,
                 subscriber: newSubscription.subscriber,
                 topicType: newSubscription.topictype,
-                createdAt: new Date().toISOString(),
-                subscriptionId: subscriptionId
+                requestTime: new Date().toISOString(),
+                status: 'UNKNOWN',
+                actionRequestId,
+                actionRequestUri: locationHeader
             };
 
             const updatedSubs = [...externalSubscriptions, newExternalSub];
-            setExternalSubscriptions(updatedSubs);
-            localStorage.setItem('externalSubscriptions', JSON.stringify(updatedSubs));
+            persistExternalSubscriptions(updatedSubs);
+            await fetchExternalSubscriptions();
         }
 
         // Reset form and close dialog
@@ -349,10 +495,16 @@ const Subscriptions = () => {
   const handleStatusUpdate = async (subscriptionId, newStatus) => {
     try {
       setActionLoading(true); // Block the screen
-      
-      await apiCall(`/action-requests/${subscriptionId}?status=${newStatus}`, {
-        method: 'PATCH'
-      });
+
+      if (newStatus === 'REQUEST_REVOKED') {
+        await apiCall(`/action-requests/${subscriptionId}`, {
+          method: 'DELETE'
+        });
+      } else {
+        await apiCall(`/action-requests/${subscriptionId}?status=${newStatus}`, {
+          method: 'PATCH'
+        });
+      }
 
       // Add a small delay to ensure the server has processed the update
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -371,7 +523,7 @@ const Subscriptions = () => {
     }
   };
 
-  const handleDeleteExternalSubscription = (subscription) => {
+  const handleForgetExternalSubscription = (subscription) => {
     setSubscriptionToDelete(subscription);
     setDeleteDialogOpen(true);
   };
@@ -381,23 +533,96 @@ const Subscriptions = () => {
       const updatedSubs = externalSubscriptions.filter(
         sub => sub.id !== subscriptionToDelete.id
       );
-      setExternalSubscriptions(updatedSubs);
-      localStorage.setItem('externalSubscriptions', JSON.stringify(updatedSubs));
+      persistExternalSubscriptions(updatedSubs);
     }
     setDeleteDialogOpen(false);
     setSubscriptionToDelete(null);
+  };
+
+  const handleExternalStatusUpdate = async (subscription, newStatus) => {
+    const server = servers.find((entry) => entry.id === subscription.serverId);
+    if (!server) {
+      setError('External server configuration not found for this request');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      if (newStatus === 'REQUEST_REVOKED') {
+        await externalApiCall(server.baseUrl, `/action-requests/${subscription.actionRequestId}`, {
+          method: 'DELETE',
+          server
+        });
+      } else {
+        await externalApiCall(server.baseUrl, `/action-requests/${subscription.actionRequestId}?status=${newStatus}`, {
+          method: 'PATCH',
+          server
+        });
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await fetchExternalSubscriptions();
+    } catch (err) {
+      console.error(`Error updating external request status: ${err.message}`);
+      setError(`Failed to update external request status: ${err.message}`);
+    } finally {
+      setTimeout(() => {
+        setActionLoading(false);
+      }, 300);
+    }
+  };
+
+  const renderExternalActionButtons = (subscription) => {
+    const isAccepted = subscription.status === 'REQUEST_ACCEPTED';
+
+    return (
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Tooltip title="View Details">
+          <IconButton
+            color="primary"
+            onClick={() => navigate(`/external-subscription-requests/${subscription.serverId}/${subscription.actionRequestId}`)}
+          >
+            <VisibilityIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={isAccepted ? 'Revoke' : 'Available only for accepted requests'}>
+          <span>
+            <IconButton
+              color="warning"
+              onClick={() => handleExternalStatusUpdate(subscription, 'REQUEST_REVOKED')}
+              disabled={!isAccepted}
+              sx={{
+                '&.Mui-disabled': {
+                  backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                  color: 'rgba(0, 0, 0, 0.26)'
+                }
+              }}
+            >
+              <RevokeIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title="Forget local record">
+          <IconButton
+            color="error"
+            onClick={() => handleForgetExternalSubscription(subscription)}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Tooltip>
+      </Box>
+    );
   };
 
   const ExternalSubscriptionsTable = () => (
     <>
       <Typography {...TABLE_STYLES.header} sx={{ mt: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
         <SendIcon />
-        External Subscriptions
+        Outbound Subscription Requests
       </Typography>
-      {externalSubscriptions.length === 0 ? (
+      {filteredExternalSubscriptions.length === 0 ? (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
           <Typography color="textSecondary">
-            No external subscriptions found
+            No outbound subscription requests found
           </Typography>
         </Paper>
       ) : (
@@ -406,48 +631,55 @@ const Subscriptions = () => {
             <TableHead>
               <TableRow {...TABLE_STYLES.tableHead}>
                 <TableCell>Server</TableCell>
-                <TableCell>Subscription ID</TableCell>
+                <TableCell>Request ID</TableCell>
+                <TableCell>Status</TableCell>
                 <TableCell>Topic</TableCell>
                 <TableCell>Subscriber</TableCell>
-                <TableCell>Created At</TableCell>
+                <TableCell>Requested At</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {externalSubscriptions.map((sub) => (
+              {pagedExternalSubscriptions.map((sub) => (
                 <TableRow 
                   key={sub.id}
                   {...TABLE_STYLES.tableRow}
                 >
                   <TableCell>{sub.server}</TableCell>
-                  <TableCell>{sub.subscriptionId}</TableCell>
+                  <TableCell>{sub.actionRequestId}</TableCell>
+	                  <TableCell>
+	                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+	                      <span>{sub.status}</span>
+	                      {sub.statusSource !== 'remote' && (
+	                        <Chip
+	                          label="Not refreshed"
+	                          size="small"
+	                          color="warning"
+	                          variant="outlined"
+	                        />
+	                      )}
+	                    </Box>
+	                  </TableCell>
                   <TableCell>{sub.topic}</TableCell>
                   <TableCell>{sub.subscriber}</TableCell>
-                  <TableCell>{new Date(sub.createdAt).toLocaleString()}</TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Tooltip title="View Details">
-                        <IconButton
-                          color="primary"
-                          onClick={() => navigate(`/external-subscription-requests/${sub.serverId}/${sub.subscriptionId}`)}
-                        >
-                          <VisibilityIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Remove from local database">
-                        <IconButton
-                          color="error"
-                          onClick={() => handleDeleteExternalSubscription(sub)}
-                        >
-                          <CloseIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </TableCell>
+                  <TableCell>{sub.requestTime ? new Date(sub.requestTime).toLocaleString() : '-'}</TableCell>
+                  <TableCell>{renderExternalActionButtons(sub)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={filteredExternalSubscriptions.length}
+            page={externalPage}
+            onPageChange={(_, newPage) => setExternalPage(newPage)}
+            rowsPerPage={externalRowsPerPage}
+            onRowsPerPageChange={(event) => {
+              setExternalRowsPerPage(parseInt(event.target.value, 10));
+              setExternalPage(0);
+            }}
+            rowsPerPageOptions={[5, 10, 25, 50]}
+          />
         </TableContainer>
       )}
     </>
@@ -497,10 +729,26 @@ const Subscriptions = () => {
             </Typography>
           </Box>
           
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <Button
-              startIcon={<RefreshIcon />}
-              onClick={fetchSubscriptions}
+	          <Box sx={{ display: 'flex', gap: 2 }}>
+	            <TextField
+	              select
+	              size="small"
+	              label="Status Filter"
+	              value={statusFilter}
+	              onChange={(e) => setStatusFilter(e.target.value)}
+	              sx={{ minWidth: 180 }}
+	            >
+	              <MenuItem value="ALL">All</MenuItem>
+	              <MenuItem value="REQUEST_ACCEPTED">Approved</MenuItem>
+	              <MenuItem value="NOT_APPROVED">Not Approved</MenuItem>
+	              <MenuItem value="REQUEST_REVOKED">Revoked</MenuItem>
+	              <MenuItem value="REQUEST_PENDING">Pending</MenuItem>
+	              <MenuItem value="REQUEST_REJECTED">Rejected</MenuItem>
+	              <MenuItem value="UNKNOWN">Unknown</MenuItem>
+	            </TextField>
+	            <Button
+	              startIcon={<RefreshIcon />}
+	              onClick={refreshAll}
               disabled={loading}
             >
               Refresh
@@ -526,7 +774,7 @@ const Subscriptions = () => {
             <Button 
               color="inherit" 
               size="small" 
-              onClick={fetchSubscriptions}
+              onClick={refreshAll}
             >
               Retry
             </Button>
@@ -539,23 +787,23 @@ const Subscriptions = () => {
       {/* Internal Subscriptions Table */}
       <Typography {...TABLE_STYLES.header}>
         <SendIcon />
-        Internal Subscriptions
+        Incoming Subscription Requests
       </Typography>
 
       {!settingsValid ? (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
           <Typography color="textSecondary">
-            Please configure API settings to view internal subscriptions
+            Please configure API settings to view incoming subscription requests
           </Typography>
         </Paper>
       ) : loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
           <CircularProgress />
         </Box>
-      ) : subscriptions.length === 0 ? (
+      ) : filteredInternalSubscriptions.length === 0 ? (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
           <Typography color="textSecondary">
-            No internal subscriptions found
+            No incoming subscription requests found
           </Typography>
         </Paper>
       ) : (
@@ -563,24 +811,26 @@ const Subscriptions = () => {
           <Table>
             <TableHead>
               <TableRow {...TABLE_STYLES.tableHead}>
-                <TableCell>ID</TableCell>
+                <TableCell>Request ID</TableCell>
+                <TableCell>Status</TableCell>
                 <TableCell>Subscriber</TableCell>
-                <TableCell>Subscription</TableCell>
-                <TableCell>Request Time</TableCell>
+                <TableCell>Subscription Ref</TableCell>
+                <TableCell>Requested At</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {subscriptions.map((subscription) => (
+              {pagedInternalSubscriptions.map((subscription) => (
                 <TableRow
                   key={subscription.id}
                   {...TABLE_STYLES.tableRow}
                 >
                   <TableCell>{subscription.id}</TableCell>
+                  <TableCell>{subscription.status}</TableCell>
                   <TableCell>{subscription.subscriber}</TableCell>
                   <TableCell>{subscription.subscription}</TableCell>
                   <TableCell>
-                    {new Date(subscription.requestTime).toLocaleString()}
+                    {subscription.requestTime ? new Date(subscription.requestTime).toLocaleString() : '-'}
                   </TableCell>
                   <TableCell>
                     <ActionButtons 
@@ -592,6 +842,18 @@ const Subscriptions = () => {
               ))}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={filteredInternalSubscriptions.length}
+            page={internalPage}
+            onPageChange={(_, newPage) => setInternalPage(newPage)}
+            rowsPerPage={internalRowsPerPage}
+            onRowsPerPageChange={(event) => {
+              setInternalRowsPerPage(parseInt(event.target.value, 10));
+              setInternalPage(0);
+            }}
+            rowsPerPageOptions={[5, 10, 25, 50]}
+          />
         </TableContainer>
       )}
 
@@ -705,14 +967,14 @@ const Subscriptions = () => {
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
       >
-        <DialogTitle>Remove External Subscription</DialogTitle>
+        <DialogTitle>Forget Outbound Request Record</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mt: 2 }}>
-            This will only remove the subscription from your local database. 
-            The subscription will remain active on the external server.
+            This only forgets the outbound request in this browser.
+            It does not revoke the remote subscription request on the external server.
           </Alert>
           <Typography sx={{ mt: 2 }}>
-            Are you sure you want to remove this subscription from your local database?
+            Are you sure you want to forget this local record?
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -724,7 +986,7 @@ const Subscriptions = () => {
             color="error" 
             variant="contained"
           >
-            Remove
+            Forget Local Record
           </Button>
         </DialogActions>
       </Dialog>
