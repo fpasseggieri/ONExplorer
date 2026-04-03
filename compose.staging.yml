@@ -1,0 +1,22 @@
+services:
+  onexplorer:
+    image: ${ONEXPLORER_IMAGE:?Set ONEXPLORER_IMAGE in the deployment environment}
+    container_name: onexplorer
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    ports:
+      - "${ONEXPLORER_BIND_ADDRESS:-127.0.0.1}:${ONEXPLORER_HOST_PORT:-3000}:3000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

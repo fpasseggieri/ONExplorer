@@ -28,12 +28,6 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [authWarning, setAuthWarning] = React.useState(null);
 
-  // Calculate the server port based on the React app's port
-  const getServerPort = () => {
-    const clientPort = window.location.port || '3000';
-    return parseInt(clientPort) + 1;
-  };
-
   useEffect(() => {
     let eventSource;
     let mounted = true;
@@ -49,10 +43,7 @@ function App() {
           return;
         }
 
-        const serverPort = getServerPort();
-        const host = window.location.hostname || 'localhost';
-        const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-        eventSource = new EventSource(`${protocol}//${host}:${serverPort}/notifyServer`);
+        eventSource = new EventSource(new URL('/notifyServer', window.location.origin).toString());
         
         eventSource.onmessage = (event) => {
           try {

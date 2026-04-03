@@ -3,25 +3,27 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:20-alpine AS runtime
 
 WORKDIR /app
 ENV NODE_ENV=production
+ENV PORT=3000
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev && npm cache clean --force
 
-COPY --from=build /app/build ./build
-COPY server ./server
-COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY --chown=node:node --from=build /app/build ./build
+COPY --chown=node:node server ./server
 
-# The app runs on PORT and the local SSE helper runs on PORT+1
-EXPOSE 3000 3001
+USER node
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD wget -qO- http://127.0.0.1:${PORT}/healthz || exit 1
+
+CMD ["node", "server/appServer.js"]
