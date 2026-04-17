@@ -18,7 +18,7 @@ docker run --rm -it \
   -p 3000:3000 \
   -e PORT=3000 \
   -e ONEXPLORER_PUBLIC_URL=http://localhost:3000 \
-  -e REACT_APP_KEYCLOAK_URL=http://localhost:8080 \
+  -e REACT_APP_KEYCLOAK_URL=http://localhost:18080 \
   -e REACT_APP_KEYCLOAK_REALM=onerecord \
   -e REACT_APP_KEYCLOAK_CLIENT_ID=default-frontend \
   -e REACT_APP_DEFAULT_BASE_URL=http://localhost:8081 \

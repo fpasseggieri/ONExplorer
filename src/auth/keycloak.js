@@ -6,6 +6,7 @@ let keycloak;
 let initPromise;
 let configSignature = '';
 const KEYCLOAK_PROBE_TIMEOUT_MS = 1500;
+const KEYCLOAK_INIT_TIMEOUT_MS = 5000;
 
 const getRequiredEnv = (name) => {
   const value = getEnv(name);
@@ -22,6 +23,39 @@ const getCurrentConfig = () => ({
 });
 
 const getConfigSignature = (config) => JSON.stringify(config);
+
+const getInitOptions = () => ({
+  onLoad: 'check-sso',
+  pkceMethod: 'S256',
+  checkLoginIframe: false,
+  silentCheckSsoRedirectUri: typeof window === 'undefined'
+    ? undefined
+    : new URL('/silent-check-sso.html', window.location.origin).toString(),
+  silentCheckSsoFallback: false
+});
+
+const withTimeout = (promise, timeoutMs, errorMessage) => {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    window.clearTimeout(timeoutId);
+  });
+};
+
+const cleanupSilentCheckSsoFrames = () => {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  document
+    .querySelectorAll('iframe[title="keycloak-silent-check-sso"]')
+    .forEach((frame) => frame.remove());
+};
 
 export const resetAuthClient = () => {
   initialized = false;
@@ -69,6 +103,22 @@ const probeKeycloakAvailability = async () => {
   }
 };
 
+const initializeAuthClient = async (authClient) => {
+  try {
+    const authenticated = await withTimeout(
+      authClient.init(getInitOptions()),
+      KEYCLOAK_INIT_TIMEOUT_MS,
+      'Keycloak initialization timed out'
+    );
+    initialized = true;
+    return authenticated;
+  } catch (error) {
+    cleanupSilentCheckSsoFrames();
+    resetAuthClient();
+    throw error;
+  }
+};
+
 export const initAuth = async () => {
   const authClient = getAuthClientOrThrow();
 
@@ -83,13 +133,7 @@ export const initAuth = async () => {
         return false;
       }
 
-      const authenticated = await authClient.init({
-        onLoad: 'check-sso',
-        pkceMethod: 'S256',
-        checkLoginIframe: false
-      });
-
-      initialized = true;
+      const authenticated = await initializeAuthClient(authClient);
       return authenticated;
     })().finally(() => {
       initPromise = null;
@@ -108,12 +152,7 @@ export const getAccessToken = async () => {
       return null;
     }
 
-    await authClient.init({
-      onLoad: 'check-sso',
-      pkceMethod: 'S256',
-      checkLoginIframe: false
-    });
-    initialized = true;
+    await initializeAuthClient(authClient);
   }
 
   if (!authClient.authenticated) {
@@ -133,12 +172,7 @@ export const login = async () => {
       throw new Error('Keycloak is not reachable');
     }
 
-    await authClient.init({
-      onLoad: 'check-sso',
-      pkceMethod: 'S256',
-      checkLoginIframe: false
-    });
-    initialized = true;
+    await initializeAuthClient(authClient);
   }
 
   return authClient.login();

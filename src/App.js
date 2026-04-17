@@ -23,12 +23,21 @@ function App() {
     initializeRuntimeSettings();
     runtimeSettingsInitialized.current = true;
   }
+  const shouldBypassAuthBootstrap =
+    typeof window !== 'undefined' && window.location.pathname.startsWith('/settings');
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [authInitializing, setAuthInitializing] = React.useState(true);
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [authWarning, setAuthWarning] = React.useState(null);
 
   useEffect(() => {
+    if (shouldBypassAuthBootstrap) {
+      setAuthInitializing(false);
+      setIsAuthenticated(false);
+      setAuthWarning(null);
+      return undefined;
+    }
+
     let eventSource;
     let mounted = true;
 
@@ -135,7 +144,7 @@ function App() {
         eventSource.close();
       }
     };
-  }, []);
+  }, [shouldBypassAuthBootstrap]);
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
@@ -164,9 +173,14 @@ function App() {
               severity="warning"
               sx={{ mb: 2 }}
               action={
-                <Button color="inherit" size="small" onClick={() => window.location.reload()}>
-                  Retry
-                </Button>
+                <>
+                  <Button color="inherit" size="small" onClick={() => window.location.assign('/settings')}>
+                    Settings
+                  </Button>
+                  <Button color="inherit" size="small" onClick={() => window.location.reload()}>
+                    Retry
+                  </Button>
+                </>
               }
             >
               {authWarning}
