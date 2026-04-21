@@ -35,7 +35,8 @@ import {
 import { useNavigate, useLocation } from 'react-router-dom';
 import Logo from './Logo'; // Import the Logo component
 import { validateSettings } from '../utils/settingsValidator';
-import { getAuthClient, logout, login } from '../auth/keycloak';
+import { getAuthClient, logout, login, resetAuthClient } from '../auth/keycloak';
+import { getCurrentRole, setCurrentRole } from '../utils/roleStorage';
 
 const THEMES = {
   SHIPPER: { 
@@ -97,13 +98,37 @@ const THEMES = {
         backgroundColor: '#6a1b9a'
       }
     }
+  },
+  CDMP_C: { 
+    color: '#00897b', // Teal
+    icon: <AccountBalance />, 
+    label: 'cdmp-c',
+    menuItemStyle: {
+      backgroundColor: '#00897b',
+      color: 'white',
+      '&:hover': {
+        backgroundColor: '#00695c'
+      }
+    }
+  },
+  CDMP_F: { 
+    color: '#3949ab', // Indigo
+    icon: <Business />, 
+    label: 'cdmp-f',
+    menuItemStyle: {
+      backgroundColor: '#3949ab',
+      color: 'white',
+      '&:hover': {
+        backgroundColor: '#283593'
+      }
+    }
   }
 };
 
 const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
   // Initialize theme from localStorage or default to 'SHIPPER'
   const [selectedTheme, setSelectedTheme] = useState(() => 
-    localStorage.getItem('userRole') || 'SHIPPER'
+    getCurrentRole()
   );
   const [settingsValid, setSettingsValid] = useState(false);
   const [authDisplayName, setAuthDisplayName] = useState('User');
@@ -149,8 +174,14 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
 
   const handleThemeChange = (event) => {
     const newTheme = event.target.value;
+    if (newTheme === selectedTheme) {
+      return;
+    }
+
     setSelectedTheme(newTheme);
-    localStorage.setItem('userRole', newTheme);
+    setCurrentRole(newTheme);
+    resetAuthClient();
+    window.location.reload();
   };
 
   const handleAuthAction = async () => {

@@ -55,6 +55,7 @@ import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import { requireAccessToken, createAuthRequiredError } from '../utils/api';
 import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
+import { getRoleStorageItem } from '../utils/roleStorage';
 
 
 // Update EVENT_TYPES constant with standardized codes
@@ -253,7 +254,7 @@ const decodeJwtPayload = (token) => {
 
 const readConfiguredExternalServers = () => {
   try {
-    const parsed = JSON.parse(localStorage.getItem('externalServers') || '[]');
+    const parsed = JSON.parse(getRoleStorageItem('externalServers') || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -359,11 +360,11 @@ const LogisticsObjectView = () => {
   const [processingActions, setProcessingActions] = useState({});
 
   // Get server info from location state, with refresh-safe fallback
-  const serverUrl = location.state?.serverUrl || localStorage.getItem('baseUrl');
+  const serverUrl = location.state?.serverUrl || getRoleStorageItem('baseUrl');
   const token = location.state?.token;
 
   const getRequestToken = useCallback(async (targetBaseUrl = serverUrl) => {
-    const internalBaseUrl = localStorage.getItem('baseUrl');
+    const internalBaseUrl = getRoleStorageItem('baseUrl');
 
     // Backward compatibility for navigation state that still passes a token.
     if (token) {
@@ -379,7 +380,7 @@ const LogisticsObjectView = () => {
   }, [serverUrl, token]);
 
   // Add this to determine if the object is external
-  const isExternalObject = serverUrl !== localStorage.getItem('baseUrl');
+  const isExternalObject = serverUrl !== getRoleStorageItem('baseUrl');
   const logisticsObjectId = id.includes('logistics-objects/')
     ? id.split('logistics-objects/')[1]
     : id;
@@ -1709,9 +1710,9 @@ const LogisticsObjectView = () => {
     if (!url) return null;
     
     // Get all configured servers
-    const externalServers = JSON.parse(localStorage.getItem('externalServers') || '[]');
+    const externalServers = JSON.parse(getRoleStorageItem('externalServers') || '[]');
     const currentServer = {
-      baseUrl: localStorage.getItem('baseUrl')
+      baseUrl: getRoleStorageItem('baseUrl')
     };
     
     // Check if URL matches any configured server

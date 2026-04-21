@@ -17,6 +17,7 @@ import LogisticsObjectForm from './LogisticsObjectForm';
 import jsonld from 'jsonld';
 import { requireAccessToken, createAuthRequiredError } from '../utils/api';
 import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
+import { getRoleStorageItem } from '../utils/roleStorage';
 
 const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) => {
   const [loading, setLoading] = useState(true);
@@ -27,11 +28,11 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
   const [schemaData, setSchemaData] = useState(null);
   const [changeMode, setChangeMode] = useState('AUTO');
 
-  const internalBaseUrl = localStorage.getItem('baseUrl');
+  const internalBaseUrl = getRoleStorageItem('baseUrl');
   const isInternalEdit = serverDetails.baseUrl === internalBaseUrl;
 
   const resolveTokenForBaseUrl = useCallback(async (targetBaseUrl) => {
-    const internalBaseUrl = localStorage.getItem('baseUrl');
+    const internalBaseUrl = getRoleStorageItem('baseUrl');
 
     // Backward compatibility for existing call sites still providing token in state.
     if (serverDetails.token && targetBaseUrl === serverDetails.baseUrl) {

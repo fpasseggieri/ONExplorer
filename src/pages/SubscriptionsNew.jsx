@@ -40,6 +40,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { apiCall, externalApiCall, getLogisticsObjects } from '../utils/api';
 import { validateSettings } from '../utils/settingsValidator';
+import { getRoleStorageItem, setRoleStorageItem } from '../utils/roleStorage';
 
 const API_NS = 'https://onerecord.iata.org/ns/api#';
 const STORAGE_KEY = 'subscriptionsNewTrackedRequests';
@@ -125,7 +126,7 @@ const isValidUrl = (value) => {
 
 const readTrackedRequests = () => {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const parsed = JSON.parse(getRoleStorageItem(STORAGE_KEY) || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -133,7 +134,7 @@ const readTrackedRequests = () => {
 };
 
 const writeTrackedRequests = (items) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  setRoleStorageItem(STORAGE_KEY, JSON.stringify(items));
 };
 
 const extractActionRequestId = (uri) => {
@@ -468,7 +469,7 @@ const SubscriptionsNew = () => {
     });
     return map;
   }, [servers]);
-  const localBaseUrl = (localStorage.getItem('baseUrl') || '').trim();
+  const localBaseUrl = (getRoleStorageItem('baseUrl') || '').trim();
 
   const refreshIncomingRequests = useCallback(async () => {
     if (!settingsValid) {
@@ -498,7 +499,7 @@ const SubscriptionsNew = () => {
       const localItems = readTrackedRequests().map(normalizeTrackedRequest);
       const legacyItems = (() => {
         try {
-          const parsed = JSON.parse(localStorage.getItem('externalSubscriptions') || '[]');
+          const parsed = JSON.parse(getRoleStorageItem('externalSubscriptions') || '[]');
           return Array.isArray(parsed) ? parsed.map(normalizeLegacyExternalSubscriptionRecord) : [];
         } catch {
           return [];
@@ -616,7 +617,7 @@ const SubscriptionsNew = () => {
     const { isValid } = validateSettings();
     setSettingsValid(isValid);
     try {
-      const savedServers = JSON.parse(localStorage.getItem('externalServers') || '[]');
+      const savedServers = JSON.parse(getRoleStorageItem('externalServers') || '[]');
       setServers(Array.isArray(savedServers) ? savedServers : []);
     } catch {
       setServers([]);

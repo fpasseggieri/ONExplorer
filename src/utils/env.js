@@ -1,3 +1,5 @@
+import { getRoleStorageItem, removeRoleStorageItem, setRoleStorageItem } from './roleStorage';
+
 const getRuntimeEnv = () => {
   if (typeof window !== 'undefined' && window.__ENV__ && typeof window.__ENV__ === 'object') {
     return window.__ENV__;
@@ -14,7 +16,7 @@ const getLocalOverride = (name) => {
   }
 
   try {
-    const value = window.localStorage.getItem(getOverrideKey(name));
+    const value = getRoleStorageItem(getOverrideKey(name));
     return typeof value === 'string' ? value : '';
   } catch {
     return '';
@@ -56,11 +58,11 @@ export const setEnvOverride = (name, value) => {
 
   try {
     if (normalized) {
-      window.localStorage.setItem(getOverrideKey(name), normalized);
+      setRoleStorageItem(getOverrideKey(name), normalized);
       return;
     }
 
-    window.localStorage.removeItem(getOverrideKey(name));
+    removeRoleStorageItem(getOverrideKey(name));
   } catch (error) {
     console.error(`Failed to persist env override for ${name}:`, error);
   }

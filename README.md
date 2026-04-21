@@ -28,8 +28,7 @@ docker run --rm -it \
 Notes:
 - The UI, SSE endpoint, and subscription helper now run on the same `PORT`.
 - Set `ONEXPLORER_PUBLIC_URL` to the externally reachable URL when the container is behind a reverse proxy.
-- `REACT_APP_DEFAULT_BASE_URL` is used only as an initial default; users can still change it in **Settings**.
-- Set `REACT_APP_ENFORCE_DEFAULT_BASE_URL=true` to force the configured default on every app startup.
+- `REACT_APP_DEFAULT_BASE_URL` is used only as an initial default for a role with no saved Base URL; users can still change it in **Settings**.
 
 ## Run Multiple ONExplorer Instances
 

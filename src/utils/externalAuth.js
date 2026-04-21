@@ -1,3 +1,5 @@
+import { getRoleStorageItem } from './roleStorage';
+
 const TOKEN_REFRESH_BUFFER_SECONDS = 30;
 
 const tokenCache = new Map();
@@ -23,7 +25,7 @@ const normalizeServer = (server) => {
 };
 
 const getServers = () => {
-  const raw = localStorage.getItem('externalServers');
+  const raw = getRoleStorageItem('externalServers');
   if (!raw) return [];
 
   try {

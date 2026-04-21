@@ -16,6 +16,7 @@ import Settings from './pages/Settings';
 import Dashboard from './pages/Dashboard';
 import { initAuth } from './auth/keycloak';
 import { initializeRuntimeSettings } from './utils/runtimeSettings';
+import { getRoleStorageItem, setRoleStorageItem } from './utils/roleStorage';
 
 function App() {
   const runtimeSettingsInitialized = React.useRef(false);
@@ -107,10 +108,10 @@ function App() {
                 title: `Logistics Object ${logisticsObjectId}`
               };
               
-              const storedNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+              const storedNotifications = JSON.parse(getRoleStorageItem('notifications') || '[]');
               if (!storedNotifications.some(n => n.id === processedNotification.id)) {
                 const updatedNotifications = [...storedNotifications, processedNotification];
-                localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
+                setRoleStorageItem('notifications', JSON.stringify(updatedNotifications));
                 console.log('Processed notification:', processedNotification);
               }
             }

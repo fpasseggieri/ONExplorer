@@ -20,6 +20,7 @@ import {
   Refresh as RefreshIcon,
   AddBox as AddBoxIcon
 } from '@mui/icons-material';
+import { getRoleStorageItem, setRoleStorageItem } from '../utils/roleStorage';
 
 // Add this function to check if object exists in external database
 const isObjectInExternalDB = (notification) => {
@@ -28,7 +29,7 @@ const isObjectInExternalDB = (notification) => {
     const server = logisticsObjectUrl.origin;
     const id = logisticsObjectUrl.pathname.split('/').pop();
     
-    const existingObjects = JSON.parse(localStorage.getItem('externalLogisticsObjects') || '[]');
+    const existingObjects = JSON.parse(getRoleStorageItem('externalLogisticsObjects') || '[]');
     return existingObjects.some(obj => obj.id === id && obj.server === server);
   } catch (err) {
     console.error('Error checking external objects:', err);
@@ -168,7 +169,7 @@ const Notifications = () => {
     const loadNotifications = () => {
       try {
         setLoading(true);
-        const storedNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+        const storedNotifications = JSON.parse(getRoleStorageItem('notifications') || '[]');
         setNotifications(storedNotifications);
         setError(null);
       } catch (err) {
@@ -184,11 +185,11 @@ const Notifications = () => {
 
   const handleDelete = async (notificationId) => {
     try {
-      const storedNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+      const storedNotifications = JSON.parse(getRoleStorageItem('notifications') || '[]');
       const updatedNotifications = storedNotifications.filter(
         notification => notification.id !== notificationId
       );
-      localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
+      setRoleStorageItem('notifications', JSON.stringify(updatedNotifications));
       
       setNotifications(updatedNotifications);
     } catch (err) {
@@ -197,7 +198,7 @@ const Notifications = () => {
   };
 
   const fetchNotifications = () => {
-    const storedNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+    const storedNotifications = JSON.parse(getRoleStorageItem('notifications') || '[]');
     setNotifications(storedNotifications);
   };
 
@@ -215,11 +216,11 @@ const Notifications = () => {
         description: `Added from notification: ${notification.eventType}`,
       };
 
-      const existingObjects = JSON.parse(localStorage.getItem('externalLogisticsObjects') || '[]');
+      const existingObjects = JSON.parse(getRoleStorageItem('externalLogisticsObjects') || '[]');
       
       if (!existingObjects.some(obj => obj.id === id && obj.server === server)) {
         const updatedObjects = [...existingObjects, externalObject];
-        localStorage.setItem('externalLogisticsObjects', JSON.stringify(updatedObjects));
+        setRoleStorageItem('externalLogisticsObjects', JSON.stringify(updatedObjects));
         console.log('Added to external objects:', externalObject);
         setNotifications([...notifications]);
       }

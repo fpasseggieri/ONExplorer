@@ -1,5 +1,6 @@
 import { getAccessToken } from '../auth/keycloak';
 import { getExternalAccessToken, getExternalServerByBaseUrl } from './externalAuth';
+import { getRoleStorageItem } from './roleStorage';
 
 export const AUTH_REQUIRED_MESSAGE = 'Authentication is required for this action. Sign in or verify your server configuration.';
 
@@ -22,7 +23,7 @@ export const requireAccessToken = async () => {
 
 const getConfig = async () => {
   const token = await requireAccessToken();
-  const baseUrl = localStorage.getItem('baseUrl');
+  const baseUrl = getRoleStorageItem('baseUrl');
 
   if (!baseUrl) {
     throw new ApiError('No API URL configured. Please configure in settings.', 500);

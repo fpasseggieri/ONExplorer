@@ -28,6 +28,7 @@ import {
 import jsonld from 'jsonld';
 import { requireAccessToken } from '../utils/api';
 import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
+import { getRoleStorageItem } from '../utils/roleStorage';
 
 const ChangeRequestView = () => {
   const { id } = useParams();
@@ -39,7 +40,7 @@ const ChangeRequestView = () => {
 
   // Get server details from location state or use defaults
   const serverDetails = useMemo(() => ({
-    baseUrl: location.state?.serverUrl || localStorage.getItem('baseUrl'),
+    baseUrl: location.state?.serverUrl || getRoleStorageItem('baseUrl'),
     token: location.state?.token
   }), [location.state?.serverUrl, location.state?.token]);
 
@@ -55,7 +56,7 @@ const ChangeRequestView = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const internalBaseUrl = localStorage.getItem('baseUrl');
+        const internalBaseUrl = getRoleStorageItem('baseUrl');
         const requestToken = serverDetails.token
           ? serverDetails.token
           : serverDetails.baseUrl === internalBaseUrl

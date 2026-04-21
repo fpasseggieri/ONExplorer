@@ -29,6 +29,7 @@ import {
 import { getExternalAccessToken } from '../utils/externalAuth';
 import { getEnv, setEnvOverride, clearEnvOverride, getBaseEnv, hasEnvOverride } from '../utils/env';
 import { resetAuthClient } from '../auth/keycloak';
+import { getCurrentRole, getRoleStorageItem, setRoleStorageItem } from '../utils/roleStorage';
 
 const isLocalHostname = (hostname) => ['localhost', '127.0.0.1', '::1'].includes(String(hostname || '').toLowerCase());
 
@@ -50,9 +51,10 @@ const normalizeServer = (server) => {
 };
 
 const Settings = () => {
+  const currentRole = getCurrentRole();
   // Internal API settings
   const [internalSettings, setInternalSettings] = useState({
-    baseUrl: localStorage.getItem('baseUrl') || '',
+    baseUrl: getRoleStorageItem('baseUrl') || '',
     keycloakUrl: getEnv('REACT_APP_KEYCLOAK_URL'),
     keycloakRealm: getEnv('REACT_APP_KEYCLOAK_REALM'),
     keycloakClientId: getEnv('REACT_APP_KEYCLOAK_CLIENT_ID')
@@ -64,7 +66,7 @@ const Settings = () => {
 
   // External servers
   const [servers, setServers] = useState(() => {
-    const savedServers = localStorage.getItem('externalServers');
+    const savedServers = getRoleStorageItem('externalServers');
     if (!savedServers) {
       return [];
     }
@@ -100,7 +102,7 @@ const Settings = () => {
   // Save internal settings
   const handleInternalSave = () => {
     try {
-      localStorage.setItem('baseUrl', internalSettings.baseUrl.trim());
+      setRoleStorageItem('baseUrl', internalSettings.baseUrl.trim());
       setEnvOverride('REACT_APP_KEYCLOAK_URL', internalSettings.keycloakUrl);
       setEnvOverride('REACT_APP_KEYCLOAK_REALM', internalSettings.keycloakRealm);
       setEnvOverride('REACT_APP_KEYCLOAK_CLIENT_ID', internalSettings.keycloakClientId);
@@ -208,7 +210,7 @@ const Settings = () => {
         updatedServers = [...servers, serverToSave];
       }
 
-      localStorage.setItem('externalServers', JSON.stringify(updatedServers));
+      setRoleStorageItem('externalServers', JSON.stringify(updatedServers));
       setServers(updatedServers);
       handleCloseDialog();
     } catch (err) {
@@ -218,7 +220,7 @@ const Settings = () => {
 
   const handleDeleteServer = (index) => {
     const updatedServers = servers.filter((_, i) => i !== index);
-    localStorage.setItem('externalServers', JSON.stringify(updatedServers));
+    setRoleStorageItem('externalServers', JSON.stringify(updatedServers));
     setServers(updatedServers);
   };
 
@@ -297,6 +299,9 @@ const Settings = () => {
           </Typography>
         </Box>
         <Divider />
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Editing settings for role: {currentRole}
+        </Alert>
       </Box>
 
       {/* Internal API Settings */}

@@ -48,8 +48,7 @@ const getRuntimeEnv = () => ({
   REACT_APP_KEYCLOAK_URL: String(process.env.REACT_APP_KEYCLOAK_URL || ''),
   REACT_APP_KEYCLOAK_REALM: String(process.env.REACT_APP_KEYCLOAK_REALM || ''),
   REACT_APP_KEYCLOAK_CLIENT_ID: String(process.env.REACT_APP_KEYCLOAK_CLIENT_ID || ''),
-  REACT_APP_DEFAULT_BASE_URL: String(process.env.REACT_APP_DEFAULT_BASE_URL || ''),
-  REACT_APP_ENFORCE_DEFAULT_BASE_URL: String(process.env.REACT_APP_ENFORCE_DEFAULT_BASE_URL || '')
+  REACT_APP_DEFAULT_BASE_URL: String(process.env.REACT_APP_DEFAULT_BASE_URL || '')
 });
 
 app.get('/healthz', (req, res) => {

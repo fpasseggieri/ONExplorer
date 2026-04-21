@@ -1,5 +1,7 @@
+import { getRoleStorageItem } from './roleStorage';
+
 export const validateSettings = () => {
-  const baseUrl = localStorage.getItem('baseUrl');
+  const baseUrl = getRoleStorageItem('baseUrl');
   
   const errors = [];
   

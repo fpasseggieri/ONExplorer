@@ -1,13 +1,9 @@
 import { getBaseEnv, getEnv, hasEnvOverride, setEnvOverride } from './env';
+import { getRoleStorageItem, migrateLegacyRoleStorage, setRoleStorageItem } from './roleStorage';
 
 const getDefaultBaseUrl = () => {
   const value = getEnv('REACT_APP_DEFAULT_BASE_URL');
   return typeof value === 'string' ? value.trim() : '';
-};
-
-const shouldEnforceDefaultBaseUrl = () => {
-  const value = getEnv('REACT_APP_ENFORCE_DEFAULT_BASE_URL');
-  return String(value || '').toLowerCase() === 'true';
 };
 
 const normalizeUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
@@ -56,12 +52,13 @@ const syncLegacyKeycloakOverride = () => {
 
 export const initializeRuntimeSettings = () => {
   try {
-    const defaultBaseUrl = getDefaultBaseUrl();
-    const currentBaseUrl = localStorage.getItem('baseUrl');
-    const enforceDefaultBaseUrl = shouldEnforceDefaultBaseUrl();
+    migrateLegacyRoleStorage();
 
-    if (defaultBaseUrl && (!currentBaseUrl || (enforceDefaultBaseUrl && currentBaseUrl !== defaultBaseUrl))) {
-      localStorage.setItem('baseUrl', defaultBaseUrl);
+    const defaultBaseUrl = getDefaultBaseUrl();
+    const currentBaseUrl = getRoleStorageItem('baseUrl');
+
+    if (defaultBaseUrl && !currentBaseUrl) {
+      setRoleStorageItem('baseUrl', defaultBaseUrl);
     }
 
     syncLegacyKeycloakOverride();
