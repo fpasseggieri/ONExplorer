@@ -1,4 +1,5 @@
 import { getBaseEnv, getEnv, hasEnvOverride, setEnvOverride } from './env';
+import { ensureCurrentEnvironment } from './environments';
 import { getRoleStorageItem, migrateLegacyRoleStorage, setRoleStorageItem } from './roleStorage';
 
 const getDefaultBaseUrl = () => {
@@ -53,6 +54,7 @@ const syncLegacyKeycloakOverride = () => {
 export const initializeRuntimeSettings = () => {
   try {
     migrateLegacyRoleStorage();
+    ensureCurrentEnvironment();
 
     const defaultBaseUrl = getDefaultBaseUrl();
     const currentBaseUrl = getRoleStorageItem('baseUrl');
