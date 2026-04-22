@@ -35,13 +35,27 @@ import Logo from './Logo'; // Import the Logo component
 import EnvironmentIcon from './EnvironmentIcon';
 import { validateSettings } from '../utils/settingsValidator';
 import { getAuthClient, logout, login, resetAuthClient } from '../auth/keycloak';
-import { setCurrentRole } from '../utils/roleStorage';
+import { CURRENT_ROLE_CHANGED_EVENT, setCurrentRole } from '../utils/roleStorage';
 import {
   ENVIRONMENTS_CHANGED_EVENT,
   ensureCurrentEnvironment,
   getEnvironmentById,
   getEnvironments
 } from '../utils/environments';
+
+const getPrioritizedEnvironments = (items) => items
+  .map((environment, index) => ({
+    ...environment,
+    isConfigured: validateSettings(environment.id).isValid,
+    originalIndex: index
+  }))
+  .sort((a, b) => {
+    if (a.isConfigured !== b.isConfigured) {
+      return a.isConfigured ? -1 : 1;
+    }
+
+    return a.originalIndex - b.originalIndex;
+  });
 
 const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
   const [environments, setEnvironments] = useState(() => getEnvironments());
@@ -52,6 +66,7 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [oldieOpen, setOldieOpen] = useState(false);
+  const environmentOptions = getPrioritizedEnvironments(environments);
   const selectedEnvironment =
     getEnvironmentById(selectedTheme, environments) ||
     environments[0] ||
@@ -69,13 +84,16 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
 
       setEnvironments(nextEnvironments);
       setSelectedTheme(currentEnvironment.id);
+      setSettingsValid(validateSettings().isValid);
     };
 
     window.addEventListener(ENVIRONMENTS_CHANGED_EVENT, refreshEnvironments);
+    window.addEventListener(CURRENT_ROLE_CHANGED_EVENT, refreshEnvironments);
     window.addEventListener('storage', refreshEnvironments);
 
     return () => {
       window.removeEventListener(ENVIRONMENTS_CHANGED_EVENT, refreshEnvironments);
+      window.removeEventListener(CURRENT_ROLE_CHANGED_EVENT, refreshEnvironments);
       window.removeEventListener('storage', refreshEnvironments);
     };
   }, []);
@@ -117,7 +135,12 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
       return;
     }
 
-    if (!getEnvironmentById(newTheme, environments)) {
+    const nextEnvironment = environmentOptions.find((environment) => environment.id === newTheme);
+    if (!nextEnvironment) {
+      return;
+    }
+
+    if (!nextEnvironment.isConfigured) {
       return;
     }
 
@@ -281,10 +304,14 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
                 }
               }}
             >
-              {environments.map((environment) => (
+              {environmentOptions.map((environment) => {
+                const disabled = !environment.isConfigured;
+
+                return (
                 <MenuItem
                   key={environment.id}
                   value={environment.id}
+                  disabled={disabled}
                   sx={{
                     display: 'flex',
                     alignItems: 'center',
@@ -296,6 +323,8 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
                     transition: 'all 0.2s ease',
                     backgroundColor: environment.color,
                     color: 'white',
+                    opacity: environment.isConfigured ? 1 : 0.45,
+                    filter: environment.isConfigured ? 'none' : 'grayscale(35%)',
                     '&:hover': {
                       backgroundColor: environment.color,
                       filter: 'brightness(0.9)'
@@ -306,6 +335,12 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
                         backgroundColor: environment.color,
                         filter: 'brightness(0.9)'
                       }
+                    },
+                    '&.Mui-disabled': {
+                      backgroundColor: environment.color,
+                      color: 'white',
+                      opacity: 0.45,
+                      WebkitTextFillColor: 'white'
                     }
                   }}
                 >
@@ -323,7 +358,8 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
                     {environment.label}
                   </Typography>
                 </MenuItem>
-              ))}
+                );
+              })}
             </Select>
           </FormControl>
         </Box>

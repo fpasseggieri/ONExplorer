@@ -1,5 +1,6 @@
 export const USER_ROLE_STORAGE_KEY = 'userRole';
 export const DEFAULT_ROLE = 'SHIPPER';
+export const CURRENT_ROLE_CHANGED_EVENT = 'roleStorage:currentRoleChanged';
 
 const ROLE_STORAGE_PREFIX = 'role';
 const LEGACY_MIGRATION_KEY = 'roleStorage:legacyMigrated';
@@ -39,6 +40,11 @@ export const setCurrentRole = (role) => {
 
   try {
     window.localStorage.setItem(USER_ROLE_STORAGE_KEY, normalizedRole);
+    window.dispatchEvent(new CustomEvent(CURRENT_ROLE_CHANGED_EVENT, {
+      detail: {
+        role: normalizedRole
+      }
+    }));
   } catch (error) {
     console.error('Failed to persist selected role:', error);
   }
@@ -49,25 +55,25 @@ export const getRoleStorageKey = (key, role = getCurrentRole()) => {
   return `${ROLE_STORAGE_PREFIX}:${normalizedRole}:${key}`;
 };
 
-export const getRoleStorageItem = (key) => {
+export const getRoleStorageItem = (key, role = getCurrentRole()) => {
   if (!hasBrowserStorage()) {
     return null;
   }
 
   try {
-    return window.localStorage.getItem(getRoleStorageKey(key));
+    return window.localStorage.getItem(getRoleStorageKey(key, role));
   } catch {
     return null;
   }
 };
 
-export const setRoleStorageItem = (key, value) => {
+export const setRoleStorageItem = (key, value, role = getCurrentRole()) => {
   if (!hasBrowserStorage()) {
     return;
   }
 
   try {
-    const storageKey = getRoleStorageKey(key);
+    const storageKey = getRoleStorageKey(key, role);
 
     if (value === undefined || value === null) {
       window.localStorage.removeItem(storageKey);
@@ -80,8 +86,8 @@ export const setRoleStorageItem = (key, value) => {
   }
 };
 
-export const removeRoleStorageItem = (key) => {
-  setRoleStorageItem(key, null);
+export const removeRoleStorageItem = (key, role = getCurrentRole()) => {
+  setRoleStorageItem(key, null, role);
 };
 
 export const migrateLegacyRoleStorage = () => {

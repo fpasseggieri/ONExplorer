@@ -651,6 +651,14 @@ const Subscriptions = () => {
 	                  <TableCell>
 	                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
 	                      <span>{sub.status}</span>
+	                      {sub.status === 'REQUEST_PENDING' && (
+	                        <Chip
+	                          label="Waiting for publisher approval"
+	                          size="small"
+	                          color="warning"
+	                          variant="outlined"
+	                        />
+	                      )}
 	                      {sub.statusSource !== 'remote' && (
 	                        <Chip
 	                          label="Not refreshed"

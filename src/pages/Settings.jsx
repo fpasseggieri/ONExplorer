@@ -7,6 +7,7 @@ import {
   Button,
   Alert,
   Divider,
+  Chip,
   Table,
   TableBody,
   TableCell,
@@ -69,34 +70,41 @@ const normalizeServer = (server) => {
   };
 };
 
+const getInternalSettingsForEnvironment = (environmentId) => ({
+  baseUrl: getRoleStorageItem('baseUrl', environmentId) || '',
+  keycloakUrl: getEnv('REACT_APP_KEYCLOAK_URL', environmentId),
+  keycloakRealm: getEnv('REACT_APP_KEYCLOAK_REALM', environmentId),
+  keycloakClientId: getEnv('REACT_APP_KEYCLOAK_CLIENT_ID', environmentId)
+});
+
+const getExternalServersForEnvironment = (environmentId) => {
+  const savedServers = getRoleStorageItem('externalServers', environmentId);
+  if (!savedServers) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(savedServers);
+    return Array.isArray(parsed) ? parsed.map(normalizeServer) : [];
+  } catch {
+    return [];
+  }
+};
+
 const Settings = () => {
   const [environments, setEnvironments] = useState(() => getEnvironments());
   const [currentEnvironment, setCurrentEnvironment] = useState(() => getCurrentEnvironment());
   // Internal API settings
-  const [internalSettings, setInternalSettings] = useState({
-    baseUrl: getRoleStorageItem('baseUrl') || '',
-    keycloakUrl: getEnv('REACT_APP_KEYCLOAK_URL'),
-    keycloakRealm: getEnv('REACT_APP_KEYCLOAK_REALM'),
-    keycloakClientId: getEnv('REACT_APP_KEYCLOAK_CLIENT_ID')
-  });
+  const [internalSettings, setInternalSettings] = useState(() => (
+    getInternalSettingsForEnvironment(currentEnvironment.id)
+  ));
   const keycloakOverridesActive =
-    hasEnvOverride('REACT_APP_KEYCLOAK_URL') ||
-    hasEnvOverride('REACT_APP_KEYCLOAK_REALM') ||
-    hasEnvOverride('REACT_APP_KEYCLOAK_CLIENT_ID');
+    hasEnvOverride('REACT_APP_KEYCLOAK_URL', currentEnvironment.id) ||
+    hasEnvOverride('REACT_APP_KEYCLOAK_REALM', currentEnvironment.id) ||
+    hasEnvOverride('REACT_APP_KEYCLOAK_CLIENT_ID', currentEnvironment.id);
 
   // External servers
-  const [servers, setServers] = useState(() => {
-    const savedServers = getRoleStorageItem('externalServers');
-    if (!savedServers) {
-      return [];
-    }
-    try {
-      const parsed = JSON.parse(savedServers);
-      return Array.isArray(parsed) ? parsed.map(normalizeServer) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [servers, setServers] = useState(() => getExternalServersForEnvironment(currentEnvironment.id));
 
   // Dialog states
   const [openDialog, setOpenDialog] = useState(false);
@@ -131,6 +139,23 @@ const Settings = () => {
   const refreshEnvironmentState = () => {
     setEnvironments(getEnvironments());
     setCurrentEnvironment(getCurrentEnvironment());
+  };
+
+  const handleSelectEnvironmentSettings = (environmentId) => {
+    const environment = environments.find((item) => item.id === environmentId);
+    if (!environment) {
+      return;
+    }
+
+    setCurrentRole(environment.id);
+    setCurrentEnvironment(environment);
+    setInternalSettings(getInternalSettingsForEnvironment(environment.id));
+    setServers(getExternalServersForEnvironment(environment.id));
+    resetAuthClient();
+    setError(null);
+    setDialogError(null);
+    setTestResult(null);
+    setKeycloakTestResult(null);
   };
 
   const handleOpenEnvironmentDialog = (environment = null) => {
@@ -208,9 +233,12 @@ const Settings = () => {
     setEnvironments(updatedEnvironments);
 
     if (currentEnvironment.id === environmentId) {
-      setCurrentRole(updatedEnvironments[0].id);
+      const nextEnvironment = updatedEnvironments[0];
+      setCurrentRole(nextEnvironment.id);
+      setCurrentEnvironment(nextEnvironment);
+      setInternalSettings(getInternalSettingsForEnvironment(nextEnvironment.id));
+      setServers(getExternalServersForEnvironment(nextEnvironment.id));
       resetAuthClient();
-      window.location.href = '/settings';
       return;
     }
 
@@ -220,10 +248,10 @@ const Settings = () => {
   // Save internal settings
   const handleInternalSave = () => {
     try {
-      setRoleStorageItem('baseUrl', internalSettings.baseUrl.trim());
-      setEnvOverride('REACT_APP_KEYCLOAK_URL', internalSettings.keycloakUrl);
-      setEnvOverride('REACT_APP_KEYCLOAK_REALM', internalSettings.keycloakRealm);
-      setEnvOverride('REACT_APP_KEYCLOAK_CLIENT_ID', internalSettings.keycloakClientId);
+      setRoleStorageItem('baseUrl', internalSettings.baseUrl.trim(), currentEnvironment.id);
+      setEnvOverride('REACT_APP_KEYCLOAK_URL', internalSettings.keycloakUrl, currentEnvironment.id);
+      setEnvOverride('REACT_APP_KEYCLOAK_REALM', internalSettings.keycloakRealm, currentEnvironment.id);
+      setEnvOverride('REACT_APP_KEYCLOAK_CLIENT_ID', internalSettings.keycloakClientId, currentEnvironment.id);
       resetAuthClient();
       setError(null);
 
@@ -292,9 +320,9 @@ const Settings = () => {
   };
 
   const handleResetAuthOverrides = () => {
-    clearEnvOverride('REACT_APP_KEYCLOAK_URL');
-    clearEnvOverride('REACT_APP_KEYCLOAK_REALM');
-    clearEnvOverride('REACT_APP_KEYCLOAK_CLIENT_ID');
+    clearEnvOverride('REACT_APP_KEYCLOAK_URL', currentEnvironment.id);
+    clearEnvOverride('REACT_APP_KEYCLOAK_REALM', currentEnvironment.id);
+    clearEnvOverride('REACT_APP_KEYCLOAK_CLIENT_ID', currentEnvironment.id);
     resetAuthClient();
     setInternalSettings((prev) => ({
       ...prev,
@@ -328,7 +356,7 @@ const Settings = () => {
         updatedServers = [...servers, serverToSave];
       }
 
-      setRoleStorageItem('externalServers', JSON.stringify(updatedServers));
+      setRoleStorageItem('externalServers', JSON.stringify(updatedServers), currentEnvironment.id);
       setServers(updatedServers);
       handleCloseDialog();
     } catch (err) {
@@ -338,7 +366,7 @@ const Settings = () => {
 
   const handleDeleteServer = (index) => {
     const updatedServers = servers.filter((_, i) => i !== index);
-    setRoleStorageItem('externalServers', JSON.stringify(updatedServers));
+    setRoleStorageItem('externalServers', JSON.stringify(updatedServers), currentEnvironment.id);
     setServers(updatedServers);
   };
 
@@ -471,75 +499,98 @@ const Settings = () => {
                   <TableCell>Name</TableCell>
                   <TableCell>Color</TableCell>
                   <TableCell>Icon</TableCell>
+                  <TableCell>Settings</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {environments.map((environment) => (
-                  <TableRow key={environment.id}>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-                        <Box
-                          sx={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: 1,
-                            backgroundColor: environment.color,
-                            color: 'white',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          <EnvironmentIcon icon={environment.icon} sx={{ fontSize: 21 }} />
+                {environments.map((environment) => {
+                  const selectedForSettings = currentEnvironment.id === environment.id;
+
+                  return (
+                    <TableRow
+                      key={environment.id}
+                      sx={{
+                        backgroundColor: selectedForSettings ? 'action.selected' : 'inherit'
+                      }}
+                    >
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                          <Box
+                            sx={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 1,
+                              backgroundColor: environment.color,
+                              color: 'white',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            <EnvironmentIcon icon={environment.icon} sx={{ fontSize: 21 }} />
+                          </Box>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ fontWeight: 600 }} noWrap>
+                              {environment.label}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap>
+                              {environment.id}
+                            </Typography>
+                          </Box>
                         </Box>
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography sx={{ fontWeight: 600 }} noWrap>
-                            {environment.label}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" noWrap>
-                            {environment.id}
-                          </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box
+                            sx={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 1,
+                              backgroundColor: environment.color,
+                              border: '1px solid rgba(0,0,0,0.16)'
+                            }}
+                          />
+                          <Typography variant="body2">{environment.color}</Typography>
                         </Box>
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box
-                          sx={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 1,
-                            backgroundColor: environment.color,
-                            border: '1px solid rgba(0,0,0,0.16)'
-                          }}
-                        />
-                        <Typography variant="body2">{environment.color}</Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell>{getEnvironmentIconLabel(environment.icon)}</TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Tooltip title="Edit">
-                          <IconButton onClick={() => handleOpenEnvironmentDialog(environment)}>
-                            <EditIcon />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title={environments.length <= 1 ? 'Keep at least one environment' : 'Delete'}>
-                          <span>
-                            <IconButton
-                              color="error"
-                              disabled={environments.length <= 1}
-                              onClick={() => handleDeleteEnvironment(environment.id)}
-                            >
-                              <DeleteIcon />
+                      </TableCell>
+                      <TableCell>{getEnvironmentIconLabel(environment.icon)}</TableCell>
+                      <TableCell>
+                        {selectedForSettings ? (
+                          <Chip label="Editing" color="primary" size="small" />
+                        ) : (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => handleSelectEnvironmentSettings(environment.id)}
+                          >
+                            Select
+                          </Button>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Tooltip title="Edit">
+                            <IconButton onClick={() => handleOpenEnvironmentDialog(environment)}>
+                              <EditIcon />
                             </IconButton>
-                          </span>
-                        </Tooltip>
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          </Tooltip>
+                          <Tooltip title={environments.length <= 1 ? 'Keep at least one environment' : 'Delete'}>
+                            <span>
+                              <IconButton
+                                color="error"
+                                disabled={environments.length <= 1}
+                                onClick={() => handleDeleteEnvironment(environment.id)}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>

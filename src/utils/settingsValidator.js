@@ -1,7 +1,7 @@
 import { getRoleStorageItem } from './roleStorage';
 
-export const validateSettings = () => {
-  const baseUrl = getRoleStorageItem('baseUrl');
+export const validateSettings = (role) => {
+  const baseUrl = getRoleStorageItem('baseUrl', role);
   
   const errors = [];
   

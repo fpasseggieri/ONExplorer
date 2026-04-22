@@ -59,10 +59,11 @@ const toValue = (value) => {
 
 const cleanSegment = (value) => {
   if (!value) return '';
-  if (value.includes('/')) return value.split('/').pop();
-  if (value.includes('#')) return value.split('#').pop();
-  if (value.includes(':')) return value.split(':').pop();
-  return value;
+  const text = String(value);
+  if (text.includes('#')) return text.split('#').pop();
+  if (text.includes('/')) return text.split('/').filter(Boolean).pop() || '';
+  if (text.includes(':')) return text.split(':').pop();
+  return text;
 };
 
 const SubscriptionRequestView = () => {

@@ -98,6 +98,64 @@ app.post('/notifications', (req, res) => {
   res.status(200).send('Notification sent');
 });
 
+app.post('/external-oauth-token', async (req, res) => {
+  const tokenEndpoint = String(req.body?.tokenEndpoint || '').trim();
+  const clientId = String(req.body?.clientId || '').trim();
+  const clientSecret = String(req.body?.clientSecret || '').trim();
+
+  if (!tokenEndpoint || !clientId || !clientSecret) {
+    return res.status(400).json({
+      error: 'INVALID_OAUTH_REQUEST',
+      message: 'Token endpoint, client ID, and client secret are required.'
+    });
+  }
+
+  let parsedEndpoint;
+  try {
+    parsedEndpoint = new URL(tokenEndpoint);
+  } catch {
+    return res.status(400).json({
+      error: 'INVALID_TOKEN_ENDPOINT',
+      message: 'OAuth token endpoint must be a valid URL.'
+    });
+  }
+
+  if (!['https:', 'http:'].includes(parsedEndpoint.protocol)) {
+    return res.status(400).json({
+      error: 'INVALID_TOKEN_ENDPOINT',
+      message: 'OAuth token endpoint must use HTTP or HTTPS.'
+    });
+  }
+
+  try {
+    const tokenResponse = await fetch(parsedEndpoint.toString(), {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret
+      }).toString()
+    });
+
+    const responseText = await tokenResponse.text();
+    const contentType = tokenResponse.headers.get('content-type') || 'application/json';
+
+    res.status(tokenResponse.status);
+    res.type(contentType);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.send(responseText);
+  } catch (error) {
+    return res.status(502).json({
+      error: 'TOKEN_ENDPOINT_UNREACHABLE',
+      message: error.message || 'Unable to reach OAuth token endpoint.'
+    });
+  }
+});
+
 app.get('/subscriptions', (req, res) => {
   const { topicType, topic } = req.query;
   const subscriptionId = crypto.randomUUID();
