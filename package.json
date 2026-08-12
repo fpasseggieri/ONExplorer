@@ -11,7 +11,7 @@
     "concurrently": "^8.2.2",
     "cors": "^2.8.5",
     "express": "^4.21.1",
-    "jsonld": "^8.3.2",
+    "jsonld": "^9.0.0",
     "keycloak-js": "^26.2.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -21,9 +21,9 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "cross-env PORT=${PORT:-3000} concurrently \"react-scripts start\" \"node server/expressServer.js ${PORT:-3000}\"",
-    "start-react": "cross-env PORT=${PORT:-3000} react-scripts start",
-    "start-server": "node server/expressServer.js ${PORT:-3000}",
+    "start": "concurrently \"npm:start-react\" \"npm:start-server\"",
+    "start-react": "react-scripts start",
+    "start-server": "node server/expressServer.js",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"

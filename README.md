@@ -3,8 +3,21 @@
 How to run it locally:
 - Clone this repository
 - Enter in the folder
-- Run: npm install
-- Run: PORT=4080 npm start
+- Run: `npm ci`
+- Set `PORT=4080` and run `npm start`
+
+On PowerShell:
+
+```powershell
+$env:PORT = 4080
+npm start
+```
+
+On Linux/macOS:
+
+```bash
+PORT=4080 npm start
+```
 
 The interface will be served on localhost:4080
 

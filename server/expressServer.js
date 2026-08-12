@@ -1,6 +1,6 @@
 const express = require('express');
 const app = express();
-const basePort = parseInt(process.argv[2]) || 3000;
+const basePort = parseInt(process.env.PORT || process.argv[2], 10) || 3000;
 const PORT = basePort + 1;
 const crypto = require('crypto');
 

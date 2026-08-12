@@ -3,8 +3,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
-# Cambiato da npm ci a npm install per risolvere il disallineamento del lockfile
-RUN npm install
+RUN npm ci
 
 COPY . .
 RUN npm run build
@@ -16,8 +15,7 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 COPY package*.json ./
-# Usiamo install anche qui per coerenza, rimuovendo le devDependencies
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --chown=node:node --from=build /app/build ./build
 COPY --chown=node:node server ./server

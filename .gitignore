@@ -1,8 +1,6 @@
 # Dependencies
 node_modules/
 
-# Lockfiles (kept local in this repo)
-package-lock.json
 
 # Build and coverage output
 build/
