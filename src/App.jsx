@@ -1,21 +1,22 @@
-import React, { useEffect } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Box, CssBaseline, CircularProgress, Alert, Button } from '@mui/material';
 import Sidebar from './components/Sidebar';
-import Database from './pages/Database';
-import LogisticsObjectView from './pages/LogisticsObjectView';
-import CreateLogisticsObject from './pages/CreateLogisticsObject';
-import Notifications from './pages/Notifications';
-import NotificationsNew from './pages/NotificationsNew';
-import Subscriptions from './pages/Subscriptions';
-import SubscriptionsNew from './pages/SubscriptionsNew';
-import SubscriptionRequestView from './pages/SubscriptionRequestView';
-import Changes from './pages/Changes';
-import ChangeRequestView from './pages/ChangeRequestView';
-import Settings from './pages/Settings';
-import Dashboard from './pages/Dashboard';
 import { initAuth } from './auth/keycloak';
 import { initializeRuntimeSettings } from './utils/runtimeSettings';
+
+const Database = lazy(() => import('./pages/Database'));
+const LogisticsObjectView = lazy(() => import('./pages/LogisticsObjectView'));
+const CreateLogisticsObject = lazy(() => import('./pages/CreateLogisticsObject'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const NotificationsNew = lazy(() => import('./pages/NotificationsNew'));
+const Subscriptions = lazy(() => import('./pages/Subscriptions'));
+const SubscriptionsNew = lazy(() => import('./pages/SubscriptionsNew'));
+const SubscriptionRequestView = lazy(() => import('./pages/SubscriptionRequestView'));
+const Changes = lazy(() => import('./pages/Changes'));
+const ChangeRequestView = lazy(() => import('./pages/ChangeRequestView'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
 
 function App() {
   const runtimeSettingsInitialized = React.useRef(false);
@@ -186,6 +187,7 @@ function App() {
               {authWarning}
             </Alert>
           )}
+          <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>}>
           <Routes>
             <Route path="/settings" element={<Settings />} />
             <Route path="/" element={<Database isAuthenticated={isAuthenticated} />} />
@@ -202,6 +204,7 @@ function App() {
             <Route path="/external-subscription-requests/:serverId/:id" element={isAuthenticated ? <SubscriptionRequestView /> : <Navigate to="/" replace />} />
             <Route path="/changes-request/:id" element={isAuthenticated ? <ChangeRequestView /> : <Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </Box>
       </Box>
     </Router>

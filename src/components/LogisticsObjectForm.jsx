@@ -23,6 +23,7 @@ import {
   Remove as RemoveIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
+import { getSchema } from '../utils/schemaLoader';
 import { getLogisticsObjects } from '../utils/api';
 
 const FieldLabel = ({ name, description }) => (
@@ -59,8 +60,8 @@ const generateFormFields = async (columns) => {
       case 'Embedded':
         field.dataType = 'fieldset';
         try {
-          const embeddedSchema = await import(`../assets/logistics-objects/Embedded.${column.type}.json`);
-          field.fields = await generateFormFields(embeddedSchema.default.columns);
+          const embeddedSchema = getSchema(`Embedded.${column.type}.json`);
+          field.fields = await generateFormFields(embeddedSchema.columns);
         } catch (error) {
           console.error(`Error loading embedded schema for ${column.type}:`, error);
         }
@@ -450,8 +451,8 @@ const LogisticsObjectForm = ({ objectType, initialData, onSubmit, debounceMs = 5
           const fields = await generateFormFields(objectType.fullSchema.columns);
           setFormStructure(fields);
         } else {
-          const schema = await import(`../assets/logistics-objects/${objectType.schema}.${objectType.name}.json`);
-          const fields = await generateFormFields(schema.default.columns);
+          const schema = getSchema(`${objectType.schema}.${objectType.name}.json`);
+          const fields = await generateFormFields(schema.columns);
           setFormStructure(fields);
         }
       } catch (error) {

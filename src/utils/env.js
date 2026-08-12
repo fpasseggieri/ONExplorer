@@ -30,7 +30,7 @@ const getConfiguredEnv = (name) => {
     return String(runtimeValue);
   }
 
-  const buildTimeValue = process.env[name];
+  const buildTimeValue = import.meta.env[name];
   if (typeof buildTimeValue === 'string') {
     return buildTimeValue;
   }

@@ -21,6 +21,7 @@ import {
   ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import { apiCall } from '../utils/api';
+import { listSchemas } from '../utils/schemaLoader';
 import LogisticsObjectForm from '../components/LogisticsObjectForm';
 
 const CreateLogisticsObject = () => {
@@ -36,12 +37,9 @@ const CreateLogisticsObject = () => {
   useEffect(() => {
     const loadAvailableTypes = async () => {
       try {
-        // Import all JSON files from the logistics-objects directory
-        const context = require.context('../assets/logistics-objects', false, /\.json$/);
-        const types = context.keys()
-          .filter(key => !key.includes('Embedded.') && !key.includes('Abstract.')) // Filter out embedded schemas
-          .map(key => {
-            const schema = require(`../assets/logistics-objects/${key.slice(2)}`);
+        const types = listSchemas()
+          .filter(([filename]) => !filename.includes('Embedded.') && !filename.includes('Abstract.'))
+          .map(([, schema]) => {
             return {
               schema: schema.schema,
               name: schema.name,

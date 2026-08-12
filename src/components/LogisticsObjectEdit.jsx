@@ -17,6 +17,7 @@ import LogisticsObjectForm from './LogisticsObjectForm';
 import jsonld from 'jsonld';
 import { requireAccessToken, createAuthRequiredError } from '../utils/api';
 import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
+import { getSchema, listSchemas } from '../utils/schemaLoader';
 
 const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) => {
   const [loading, setLoading] = useState(true);
@@ -156,19 +157,18 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
         }
         
         // Find and load the schema file that matches the object type
-        const context = require.context('../assets/logistics-objects/', false, /\..*\.json$/);
-        const schemaFile = context.keys().find(key => key.endsWith(`.${typeIdentifier}.json`));
+        const schemaEntry = listSchemas().find(([filename]) => filename.endsWith(`.${typeIdentifier}.json`));
         
-        if (!schemaFile) {
+        if (!schemaEntry) {
           throw new Error(`No schema file found for type: ${typeIdentifier}`);
         }
 
-        const schema = await import(`../assets/logistics-objects/${schemaFile.slice(2)}`);
+        const [, schema] = schemaEntry;
         
         // Store both the schema and the type information consistently
         setSchemaData({
           name: typeIdentifier,
-          schema: schema.default.schema || 'Core'
+          schema: schema.schema || 'Core'
         });
         
         setError(null);
@@ -266,7 +266,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
                 Object.keys(item).forEach(key => {
                   if (key.startsWith('@')) return;
                   
-                  const nestedSchema = require(`../assets/logistics-objects/${propertySchema.schemaType}.${propertySchema.type}.json`);
+                  const nestedSchema = getSchema(`${propertySchema.schemaType}.${propertySchema.type}.json`);
                   const nestedPropertySchema = nestedSchema.columns.find(col => col.name === key);
                   
                   if (nestedPropertySchema) {
@@ -315,7 +315,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
             Object.keys(value).forEach(key => {
               if (key.startsWith('@')) return;
               
-              const nestedSchema = require(`../assets/logistics-objects/${propertySchema.schemaType}.${propertySchema.type}.json`);
+              const nestedSchema = getSchema(`${propertySchema.schemaType}.${propertySchema.type}.json`);
               const nestedPropertySchema = nestedSchema.columns.find(col => col.name === key);
               
               if (nestedPropertySchema) {
@@ -388,7 +388,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
               Object.keys(item).forEach(key => {
                 if (key.startsWith('@')) return;
                 
-                const nestedSchema = require(`../assets/logistics-objects/${propertySchema.schemaType}.${propertySchema.type}.json`);
+                const nestedSchema = getSchema(`${propertySchema.schemaType}.${propertySchema.type}.json`);
                 const nestedPropertySchema = nestedSchema.columns.find(col => col.name === key);
                 
                 if (nestedPropertySchema) {
@@ -439,7 +439,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
           Object.keys(value).forEach(key => {
             if (key.startsWith('@')) return;
             
-            const nestedSchema = require(`../assets/logistics-objects/${propertySchema.schemaType}.${propertySchema.type}.json`);
+            const nestedSchema = getSchema(`${propertySchema.schemaType}.${propertySchema.type}.json`);
             const nestedPropertySchema = nestedSchema.columns.find(col => col.name === key);
             
             if (nestedPropertySchema) {
@@ -477,7 +477,7 @@ const LogisticsObjectEdit = ({ objectId, objectType, serverDetails, onClose }) =
         const newValue = formData[key];
         
         if (JSON.stringify(originalValue) !== JSON.stringify(newValue)) {
-          const schemaFile = require(`../assets/logistics-objects/${schemaData.schema}.${schemaData.name}.json`);
+          const schemaFile = getSchema(`${schemaData.schema}.${schemaData.name}.json`);
           const propertySchema = schemaFile.columns.find(column => column.name === key);
           
           if (propertySchema) {

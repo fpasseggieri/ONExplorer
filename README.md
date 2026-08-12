@@ -1,5 +1,7 @@
 # ONExplorer - A demo interface for ONE Record.
 
+Requirements: Node.js 26 and npm 11 or newer.
+
 How to run it locally:
 - Clone this repository
 - Enter in the folder
@@ -19,7 +21,15 @@ On Linux/macOS:
 PORT=4080 npm start
 ```
 
-The interface will be served on localhost:4080
+The Vite development interface is served on `http://localhost:4080`; the local notification helper uses port `4081`.
+
+Create an optimized production bundle with:
+
+```bash
+npm run build
+```
+
+The frontend uses Vite and route-level code splitting. Docker installs the frontend toolchain only in the disposable build stage; the runtime stage installs only the Express server dependencies from `server/package-lock.json`.
 
 ## Run with Docker
 
@@ -39,6 +49,7 @@ docker run --rm -it \
 ```
 
 Notes:
+- Both Docker stages use Node.js 26 Alpine.
 - The UI, SSE endpoint, and subscription helper now run on the same `PORT`.
 - Set `ONEXPLORER_PUBLIC_URL` to the externally reachable URL when the container is behind a reverse proxy.
 - `REACT_APP_DEFAULT_BASE_URL` is used only as an initial default; users can still change it in **Settings**.
