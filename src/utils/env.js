@@ -1,3 +1,5 @@
+import { getRoleStorageItem, removeRoleStorageItem, setRoleStorageItem } from './roleStorage';
+
 const getRuntimeEnv = () => {
   if (typeof window !== 'undefined' && window.__ENV__ && typeof window.__ENV__ === 'object') {
     return window.__ENV__;
@@ -8,13 +10,13 @@ const getRuntimeEnv = () => {
 
 const getOverrideKey = (name) => `envOverride:${name}`;
 
-const getLocalOverride = (name) => {
+const getLocalOverride = (name, role) => {
   if (typeof window === 'undefined') {
     return '';
   }
 
   try {
-    const value = window.localStorage.getItem(getOverrideKey(name));
+    const value = getRoleStorageItem(getOverrideKey(name), role);
     return typeof value === 'string' ? value : '';
   } catch {
     return '';
@@ -38,8 +40,8 @@ const getConfiguredEnv = (name) => {
   return '';
 };
 
-export const getEnv = (name) => {
-  const localOverride = getLocalOverride(name);
+export const getEnv = (name, role) => {
+  const localOverride = getLocalOverride(name, role);
   if (typeof localOverride === 'string' && localOverride.trim()) {
     return localOverride;
   }
@@ -47,7 +49,7 @@ export const getEnv = (name) => {
   return getConfiguredEnv(name);
 };
 
-export const setEnvOverride = (name, value) => {
+export const setEnvOverride = (name, value, role) => {
   if (typeof window === 'undefined') {
     return;
   }
@@ -56,23 +58,23 @@ export const setEnvOverride = (name, value) => {
 
   try {
     if (normalized) {
-      window.localStorage.setItem(getOverrideKey(name), normalized);
+      setRoleStorageItem(getOverrideKey(name), normalized, role);
       return;
     }
 
-    window.localStorage.removeItem(getOverrideKey(name));
+    removeRoleStorageItem(getOverrideKey(name), role);
   } catch (error) {
     console.error(`Failed to persist env override for ${name}:`, error);
   }
 };
 
-export const hasEnvOverride = (name) => {
-  const value = getLocalOverride(name);
+export const hasEnvOverride = (name, role) => {
+  const value = getLocalOverride(name, role);
   return typeof value === 'string' && value.trim().length > 0;
 };
 
-export const clearEnvOverride = (name) => {
-  setEnvOverride(name, '');
+export const clearEnvOverride = (name, role) => {
+  setEnvOverride(name, '', role);
 };
 
 export const getBaseEnv = (name) => getConfiguredEnv(name);

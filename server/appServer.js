@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
+const { handleExternalOAuthToken } = require('./externalOAuthProxy');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -48,8 +49,7 @@ const getRuntimeEnv = () => ({
   REACT_APP_KEYCLOAK_URL: String(process.env.REACT_APP_KEYCLOAK_URL || ''),
   REACT_APP_KEYCLOAK_REALM: String(process.env.REACT_APP_KEYCLOAK_REALM || ''),
   REACT_APP_KEYCLOAK_CLIENT_ID: String(process.env.REACT_APP_KEYCLOAK_CLIENT_ID || ''),
-  REACT_APP_DEFAULT_BASE_URL: String(process.env.REACT_APP_DEFAULT_BASE_URL || ''),
-  REACT_APP_ENFORCE_DEFAULT_BASE_URL: String(process.env.REACT_APP_ENFORCE_DEFAULT_BASE_URL || '')
+  REACT_APP_DEFAULT_BASE_URL: String(process.env.REACT_APP_DEFAULT_BASE_URL || '')
 });
 
 app.get('/healthz', (req, res) => {
@@ -98,6 +98,8 @@ app.post('/notifications', (req, res) => {
   console.log('Notification sent:', message);
   res.status(200).send('Notification sent');
 });
+
+app.post('/external-oauth-token', handleExternalOAuthToken);
 
 app.get('/subscriptions', (req, res) => {
   const { topicType, topic } = req.query;

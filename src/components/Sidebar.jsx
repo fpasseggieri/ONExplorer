@@ -10,6 +10,7 @@ import {
   IconButton,
   Divider,
   Typography,
+  Collapse,
   Select,
   MenuItem,
   FormControl,
@@ -22,98 +23,79 @@ import {
   Notifications as NotificationsIcon,
   Send as SendIcon,
   ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
   Menu as MenuIcon,
   Add as AddIcon,
-  LocalShipping,
-  Flight,
-  Business,
-  LocalPostOffice,
-  AccountBalance,
+  History as HistoryIcon,
   Logout as LogoutIcon,
   Login as LoginIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Logo from './Logo'; // Import the Logo component
+import EnvironmentIcon from './EnvironmentIcon';
 import { validateSettings } from '../utils/settingsValidator';
-import { getAuthClient, logout, login } from '../auth/keycloak';
+import { getAuthClient, logout, login, resetAuthClient } from '../auth/keycloak';
+import { CURRENT_ROLE_CHANGED_EVENT, setCurrentRole } from '../utils/roleStorage';
+import {
+  ENVIRONMENTS_CHANGED_EVENT,
+  ensureCurrentEnvironment,
+  getEnvironmentById,
+  getEnvironments
+} from '../utils/environments';
 
-const THEMES = {
-  SHIPPER: { 
-    color: '#2e7d32', // Green
-    icon: <LocalShipping />, 
-    label: 'Shipper',
-    menuItemStyle: {
-      backgroundColor: '#2e7d32',
-      color: 'white',
-      '&:hover': {
-        backgroundColor: '#1b5e20'
-      }
+const getPrioritizedEnvironments = (items) => items
+  .map((environment, index) => ({
+    ...environment,
+    isConfigured: validateSettings(environment.id).isValid,
+    originalIndex: index
+  }))
+  .sort((a, b) => {
+    if (a.isConfigured !== b.isConfigured) {
+      return a.isConfigured ? -1 : 1;
     }
-  },
-  FORWARDER: { 
-    color: '#0288d1', // Blue
-    icon: <Business />, 
-    label: 'Forwarder',
-    menuItemStyle: {
-      backgroundColor: '#0288d1',
-      color: 'white',
-      '&:hover': {
-        backgroundColor: '#01579b'
-      }
-    }
-  },
-  AIRLINE: { 
-    color: '#d32f2f', // Red
-    icon: <Flight />, 
-    label: 'Airline',
-    menuItemStyle: {
-      backgroundColor: '#d32f2f',
-      color: 'white',
-      '&:hover': {
-        backgroundColor: '#c62828'
-      }
-    }
-  },
-  POST: { 
-    color: '#f57c00', // Orange
-    icon: <LocalPostOffice />, 
-    label: 'Post',
-    menuItemStyle: {
-      backgroundColor: '#f57c00',
-      color: 'white',
-      '&:hover': {
-        backgroundColor: '#e65100'
-      }
-    }
-  },
-  CUSTOM: { 
-    color: '#7b1fa2', // Purple
-    icon: <AccountBalance />, 
-    label: 'Custom',
-    menuItemStyle: {
-      backgroundColor: '#7b1fa2',
-      color: 'white',
-      '&:hover': {
-        backgroundColor: '#6a1b9a'
-      }
-    }
-  }
-};
+
+    return a.originalIndex - b.originalIndex;
+  });
 
 const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
-  // Initialize theme from localStorage or default to 'SHIPPER'
-  const [selectedTheme, setSelectedTheme] = useState(() => 
-    localStorage.getItem('userRole') || 'SHIPPER'
-  );
+  const [environments, setEnvironments] = useState(() => getEnvironments());
+  const [selectedTheme, setSelectedTheme] = useState(() => ensureCurrentEnvironment().id);
   const [settingsValid, setSettingsValid] = useState(false);
   const [authDisplayName, setAuthDisplayName] = useState('User');
   const [authUsername, setAuthUsername] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
+  const [oldieOpen, setOldieOpen] = useState(false);
+  const environmentOptions = getPrioritizedEnvironments(environments);
+  const selectedEnvironment =
+    getEnvironmentById(selectedTheme, environments) ||
+    environments[0] ||
+    { id: 'ENVIRONMENT', label: 'Environment', color: '#0288d1', icon: 'business' };
 
   useEffect(() => {
     const { isValid } = validateSettings();
     setSettingsValid(isValid);
+  }, []);
+
+  useEffect(() => {
+    const refreshEnvironments = () => {
+      const nextEnvironments = getEnvironments();
+      const currentEnvironment = ensureCurrentEnvironment();
+
+      setEnvironments(nextEnvironments);
+      setSelectedTheme(currentEnvironment.id);
+      setSettingsValid(validateSettings().isValid);
+    };
+
+    window.addEventListener(ENVIRONMENTS_CHANGED_EVENT, refreshEnvironments);
+    window.addEventListener(CURRENT_ROLE_CHANGED_EVENT, refreshEnvironments);
+    window.addEventListener('storage', refreshEnvironments);
+
+    return () => {
+      window.removeEventListener(ENVIRONMENTS_CHANGED_EVENT, refreshEnvironments);
+      window.removeEventListener(CURRENT_ROLE_CHANGED_EVENT, refreshEnvironments);
+      window.removeEventListener('storage', refreshEnvironments);
+    };
   }, []);
 
   useEffect(() => {
@@ -149,8 +131,23 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
 
   const handleThemeChange = (event) => {
     const newTheme = event.target.value;
+    if (newTheme === selectedTheme) {
+      return;
+    }
+
+    const nextEnvironment = environmentOptions.find((environment) => environment.id === newTheme);
+    if (!nextEnvironment) {
+      return;
+    }
+
+    if (!nextEnvironment.isConfigured) {
+      return;
+    }
+
     setSelectedTheme(newTheme);
-    localStorage.setItem('userRole', newTheme);
+    setCurrentRole(newTheme);
+    resetAuthClient();
+    window.location.reload();
   };
 
   const handleAuthAction = async () => {
@@ -169,10 +166,20 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
     { text: 'Database', icon: <DatabaseIcon />, path: '/' },
     ...(settingsValid ? [
       { text: 'Create Object', icon: <AddIcon />, path: '/logistics-objects/create', requiresAuth: true },
-      { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions', requiresAuth: true },
+    ] : []),
+    {
+      text: 'Oldie',
+      icon: <HistoryIcon />,
+      children: [
+        ...(settingsValid ? [
+          { text: 'Subscriptions', icon: <SendIcon />, path: '/subscriptions', requiresAuth: true },
+        ] : []),
+        { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications', requiresAuth: true }
+      ]
+    },
+    ...(settingsValid ? [
       { text: 'Subscription New', icon: <SendIcon />, path: '/subscriptions-new', requiresAuth: true },
     ] : []),
-    { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications', requiresAuth: true },
     { text: 'Notifications New', icon: <NotificationsIcon />, path: '/notifications-new', requiresAuth: true },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];
@@ -188,7 +195,7 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
           width: open ? 240 : 64,
           transition: 'width 0.2s ease-in-out',
           overflowX: 'hidden',
-          backgroundColor: THEMES[selectedTheme].color,
+          backgroundColor: selectedEnvironment.color,
           color: 'white',
           display: 'flex',
           flexDirection: 'column'
@@ -249,6 +256,18 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
             <Select
               value={selectedTheme}
               onChange={handleThemeChange}
+              renderValue={(value) => {
+                const environment = getEnvironmentById(value, environments) || selectedEnvironment;
+
+                return (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <EnvironmentIcon icon={environment.icon} sx={{ fontSize: 20 }} />
+                    <Typography sx={{ fontWeight: 500, color: 'inherit' }} noWrap>
+                      {environment.label}
+                    </Typography>
+                  </Box>
+                );
+              }}
               sx={{
                 color: 'white',
                 '.MuiOutlinedInput-notchedOutline': {
@@ -285,10 +304,14 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
                 }
               }}
             >
-              {Object.entries(THEMES).map(([key, value]) => (
-                <MenuItem 
-                  key={key} 
-                  value={key} 
+              {environmentOptions.map((environment) => {
+                const disabled = !environment.isConfigured;
+
+                return (
+                <MenuItem
+                  key={environment.id}
+                  value={environment.id}
+                  disabled={disabled}
                   sx={{
                     display: 'flex',
                     alignItems: 'center',
@@ -298,12 +321,26 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
                     my: 0.25,
                     borderRadius: '6px',
                     transition: 'all 0.2s ease',
-                    ...value.menuItemStyle,
+                    backgroundColor: environment.color,
+                    color: 'white',
+                    opacity: environment.isConfigured ? 1 : 0.45,
+                    filter: environment.isConfigured ? 'none' : 'grayscale(35%)',
+                    '&:hover': {
+                      backgroundColor: environment.color,
+                      filter: 'brightness(0.9)'
+                    },
                     '&.Mui-selected': {
-                      ...value.menuItemStyle,
+                      backgroundColor: environment.color,
                       '&:hover': {
-                        ...value.menuItemStyle['&:hover']
+                        backgroundColor: environment.color,
+                        filter: 'brightness(0.9)'
                       }
+                    },
+                    '&.Mui-disabled': {
+                      backgroundColor: environment.color,
+                      color: 'white',
+                      opacity: 0.45,
+                      WebkitTextFillColor: 'white'
                     }
                   }}
                 >
@@ -312,18 +349,17 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
                     alignItems: 'center',
                     color: 'inherit'
                   }}>
-                    {React.cloneElement(value.icon, { 
-                      sx: { fontSize: 20 } 
-                    })}
+                    <EnvironmentIcon icon={environment.icon} sx={{ fontSize: 20 }} />
                   </Box>
                   <Typography sx={{ 
                     fontWeight: 500,
                     color: 'inherit'
                   }}>
-                    {value.label}
+                    {environment.label}
                   </Typography>
                 </MenuItem>
-              ))}
+                );
+              })}
             </Select>
           </FormControl>
         </Box>
@@ -333,6 +369,121 @@ const Sidebar = ({ open, toggleDrawer, isAuthenticated = true }) => {
         <List>
           {menuItems.map((item) => {
             const disabled = Boolean(item.requiresAuth && !isAuthenticated);
+            const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+            const hasActiveChild = hasChildren && item.children.some((child) => location.pathname === child.path);
+
+            if (hasChildren) {
+              return (
+                <React.Fragment key={item.text}>
+                  <ListItem
+                    disablePadding
+                    sx={{ display: 'block' }}
+                  >
+                    <ListItemButton
+                      sx={{
+                        minHeight: 48,
+                        justifyContent: open ? 'initial' : 'center',
+                        px: 2.5,
+                        backgroundColor: hasActiveChild
+                          ? 'rgba(255, 255, 255, 0.08)'
+                          : 'transparent',
+                        '&:hover': {
+                          backgroundColor: 'rgba(255, 255, 255, 0.12)'
+                        }
+                      }}
+                      onClick={() => setOldieOpen((current) => !current)}
+                    >
+                      <ListItemIcon
+                        sx={{
+                          minWidth: 0,
+                          mr: open ? 2 : 'auto',
+                          justifyContent: 'center',
+                          color: 'white'
+                        }}
+                      >
+                        {item.icon}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={item.text}
+                        sx={{
+                          opacity: open ? 1 : 0,
+                          '& .MuiListItemText-primary': {
+                            color: 'white',
+                            fontWeight: hasActiveChild ? 600 : 400
+                          }
+                        }}
+                      />
+                      {open && (
+                        <ChevronRightIcon
+                          sx={{
+                            transform: oldieOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.2s ease'
+                          }}
+                        />
+                      )}
+                    </ListItemButton>
+                  </ListItem>
+                  <Collapse in={open && oldieOpen} timeout="auto" unmountOnExit>
+                    <List disablePadding>
+                      {item.children.map((child) => {
+                        const childDisabled = Boolean(child.requiresAuth && !isAuthenticated);
+                        const childActive = location.pathname === child.path;
+
+                        return (
+                          <ListItem
+                            key={child.text}
+                            disablePadding
+                            sx={{ display: 'block' }}
+                          >
+                            <ListItemButton
+                              disabled={childDisabled}
+                              sx={{
+                                minHeight: 44,
+                                justifyContent: 'initial',
+                                pl: 5.5,
+                                pr: 2.5,
+                                backgroundColor: childActive
+                                  ? 'rgba(255, 255, 255, 0.08)'
+                                  : 'transparent',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(255, 255, 255, 0.12)'
+                                }
+                              }}
+                              onClick={() => {
+                                if (!childDisabled) {
+                                  navigate(child.path);
+                                }
+                              }}
+                            >
+                              <ListItemIcon
+                                sx={{
+                                  minWidth: 0,
+                                  mr: 2,
+                                  justifyContent: 'center',
+                                  color: 'white'
+                                }}
+                              >
+                                {child.icon}
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={child.text}
+                                sx={{
+                                  '& .MuiListItemText-primary': {
+                                    color: 'white',
+                                    fontWeight: childActive ? 600 : 400
+                                  }
+                                }}
+                              />
+                            </ListItemButton>
+                          </ListItem>
+                        );
+                      })}
+                    </List>
+                  </Collapse>
+                </React.Fragment>
+              );
+            }
+
             return (
             <ListItem 
               key={item.text} 

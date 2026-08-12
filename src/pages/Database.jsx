@@ -40,6 +40,7 @@ import { getLogisticsObjects } from '../utils/api';
 import LogisticsObjectEdit from '../components/LogisticsObjectEdit';
 import { validateSettings } from '../utils/settingsValidator';
 import SubscriptionDialog from '../components/SubscriptionDialog';
+import { getRoleStorageItem, setRoleStorageItem } from '../utils/roleStorage';
 
 // Add this constant at the top of the file, after imports
 const TABLE_STYLES = {
@@ -150,7 +151,7 @@ const Database = ({ isAuthenticated = true }) => {
 
   useEffect(() => {
     // Load external objects from localStorage on component mount
-    const savedExternalObjects = localStorage.getItem('externalLogisticsObjects');
+    const savedExternalObjects = getRoleStorageItem('externalLogisticsObjects');
     if (savedExternalObjects) {
       setExternalObjects(JSON.parse(savedExternalObjects));
     }
@@ -198,7 +199,7 @@ const Database = ({ isAuthenticated = true }) => {
     navigate(`/logistics-objects/${item.id}`, {
       state: { 
         isExternal: false,
-        serverUrl: localStorage.getItem('baseUrl')
+        serverUrl: getRoleStorageItem('baseUrl')
       }
     });
   };
@@ -209,7 +210,7 @@ const Database = ({ isAuthenticated = true }) => {
     
     if (isExternal) {
       // Get external server config from localStorage
-      const externalServers = JSON.parse(localStorage.getItem('externalServers') || '[]');
+      const externalServers = JSON.parse(getRoleStorageItem('externalServers') || '[]');
       const serverConfig = externalServers.find(s => s.baseUrl === item.server);
       
       serverDetails = {
@@ -218,7 +219,7 @@ const Database = ({ isAuthenticated = true }) => {
       };
     } else {
       // Use internal server config
-      const baseUrl = localStorage.getItem('baseUrl');
+      const baseUrl = getRoleStorageItem('baseUrl');
       serverDetails = {
         baseUrl
       };
@@ -289,7 +290,7 @@ const Database = ({ isAuthenticated = true }) => {
   const handleDeleteExternalObject = (object) => {
     const updatedObjects = externalObjects.filter(obj => obj.id !== object.id);
     setExternalObjects(updatedObjects);
-    localStorage.setItem('externalLogisticsObjects', JSON.stringify(updatedObjects));
+    setRoleStorageItem('externalLogisticsObjects', JSON.stringify(updatedObjects));
   };
 
   const handleChangePage = (_, newPage) => {
@@ -617,7 +618,7 @@ const Database = ({ isAuthenticated = true }) => {
               // Optionally show a success message or refresh data
             }
           }}
-          objectId={`${localStorage.getItem('baseUrl')}/logistics-objects/${selectedObjectForSubscription.id}`}
+          objectId={`${getRoleStorageItem('baseUrl')}/logistics-objects/${selectedObjectForSubscription.id}`}
         />
       )}
     </Box>

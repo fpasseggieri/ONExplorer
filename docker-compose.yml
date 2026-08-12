@@ -13,9 +13,12 @@ services:
       REACT_APP_KEYCLOAK_REALM: onerecord
       REACT_APP_KEYCLOAK_CLIENT_ID: default-frontend
       REACT_APP_DEFAULT_BASE_URL: https://localhost:7196/default
-      REACT_APP_ENFORCE_DEFAULT_BASE_URL: "true"
+      # Local development only.
+      ONEXPLORER_ALLOW_INSECURE_LOCALHOST_TLS: "true"
     ports:
       - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   onexplorer-b:
@@ -31,7 +34,10 @@ services:
       REACT_APP_KEYCLOAK_REALM: onerecord-b
       REACT_APP_KEYCLOAK_CLIENT_ID: default-frontend-b
       REACT_APP_DEFAULT_BASE_URL: https://localhost:7297/default
-      REACT_APP_ENFORCE_DEFAULT_BASE_URL: "true"
+      # Local development only.
+      ONEXPLORER_ALLOW_INSECURE_LOCALHOST_TLS: "true"
     ports:
       - "3100:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped

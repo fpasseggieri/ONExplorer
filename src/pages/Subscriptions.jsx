@@ -37,6 +37,7 @@ import {
 import { getLogisticsObjects, apiCall, externalApiCall } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 import { validateSettings } from '../utils/settingsValidator';
+import { getRoleStorageItem, setRoleStorageItem } from '../utils/roleStorage';
 
 const TOPIC_TYPES = [
   'LOGISTICS_OBJECT_IDENTIFIER',
@@ -256,7 +257,7 @@ const Subscriptions = () => {
   }, []);
 
   const persistExternalSubscriptions = useCallback((items) => {
-    localStorage.setItem('externalSubscriptions', JSON.stringify(items));
+    setRoleStorageItem('externalSubscriptions', JSON.stringify(items));
     setExternalSubscriptions(items);
   }, []);
 
@@ -290,14 +291,14 @@ const Subscriptions = () => {
 
   useEffect(() => {
     const loadServers = () => {
-      const savedServers = JSON.parse(localStorage.getItem('externalServers') || '[]');
+      const savedServers = JSON.parse(getRoleStorageItem('externalServers') || '[]');
       setServers(savedServers);
     };
     loadServers();
   }, []);
 
   const fetchExternalSubscriptions = useCallback(async () => {
-    const saved = JSON.parse(localStorage.getItem('externalSubscriptions') || '[]');
+    const saved = JSON.parse(getRoleStorageItem('externalSubscriptions') || '[]');
     const normalized = saved.map(normalizeExternalSubscriptionRecord);
 
     if (normalized.length === 0) {
@@ -650,6 +651,14 @@ const Subscriptions = () => {
 	                  <TableCell>
 	                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
 	                      <span>{sub.status}</span>
+	                      {sub.status === 'REQUEST_PENDING' && (
+	                        <Chip
+	                          label="Waiting for publisher approval"
+	                          size="small"
+	                          color="warning"
+	                          variant="outlined"
+	                        />
+	                      )}
 	                      {sub.statusSource !== 'remote' && (
 	                        <Chip
 	                          label="Not refreshed"

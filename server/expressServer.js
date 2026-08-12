@@ -3,6 +3,7 @@ const app = express();
 const basePort = parseInt(process.env.PORT || process.argv[2], 10) || 3000;
 const PORT = basePort + 1;
 const crypto = require('crypto');
+const { handleExternalOAuthToken } = require('./externalOAuthProxy');
 
 // Add a middleware to allow all CORS requests
 app.use((req, res, next) => {
@@ -15,7 +16,7 @@ app.use((req, res, next) => {
 // Configure express.json middleware with proper settings
 app.use(express.json({
   limit: '10mb',
-  type: ['application/ld+json'],
+  type: ['application/json', 'application/ld+json', 'application/*+json'],
   strict: false
 }));
 
@@ -76,6 +77,8 @@ app.post('/notifications', (req, res) => {
   console.log('Notification sent:', message);
   res.status(200).send('Notification sent');
 });
+
+app.post('/external-oauth-token', handleExternalOAuthToken);
 
 app.get('/subscriptions', (req, res) => {
   const { topicType, topic } = req.query;

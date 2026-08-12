@@ -52,8 +52,10 @@ Notes:
 - Both Docker stages use Node.js 26 Alpine.
 - The UI, SSE endpoint, and subscription helper now run on the same `PORT`.
 - Set `ONEXPLORER_PUBLIC_URL` to the externally reachable URL when the container is behind a reverse proxy.
-- `REACT_APP_DEFAULT_BASE_URL` is used only as an initial default; users can still change it in **Settings**.
-- Set `REACT_APP_ENFORCE_DEFAULT_BASE_URL=true` to force the configured default on every app startup.
+- `REACT_APP_DEFAULT_BASE_URL` is used only as an initial default for a role with no saved Base URL; users can still change it in **Settings**.
+- External OAuth token requests are proxied by the ONExplorer server. If your token endpoint is set to `localhost` and ONExplorer runs in Docker, `localhost` is the container itself. Use a host reachable from the container (for example `host.docker.internal`) or set `ONEXPLORER_LOCALHOST_ALIAS`.
+- On Linux Docker Engine, ensure `host.docker.internal` resolves inside the ONExplorer container (for example `extra_hosts: ["host.docker.internal:host-gateway"]`).
+- For local development with self-signed certificates on OAuth token endpoints, you can opt in to insecure TLS only for local hosts by setting `ONEXPLORER_ALLOW_INSECURE_LOCALHOST_TLS=true`.
 
 ## Run Multiple ONExplorer Instances
 

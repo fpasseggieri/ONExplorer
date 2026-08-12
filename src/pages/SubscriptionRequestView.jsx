@@ -26,6 +26,7 @@ import { apiCall, externalApiCall } from '../utils/api';
 import { getExternalServerById } from '../utils/externalAuth';
 import jsonld from 'jsonld';
 import { Link as RouterLink } from 'react-router-dom'; // Import RouterLink if used
+import { getRoleStorageItem } from '../utils/roleStorage';
 
 const API_NS = 'https://onerecord.iata.org/ns/api#';
 
@@ -58,10 +59,11 @@ const toValue = (value) => {
 
 const cleanSegment = (value) => {
   if (!value) return '';
-  if (value.includes('/')) return value.split('/').pop();
-  if (value.includes('#')) return value.split('#').pop();
-  if (value.includes(':')) return value.split(':').pop();
-  return value;
+  const text = String(value);
+  if (text.includes('#')) return text.split('#').pop();
+  if (text.includes('/')) return text.split('/').filter(Boolean).pop() || '';
+  if (text.includes(':')) return text.split(':').pop();
+  return text;
 };
 
 const SubscriptionRequestView = () => {
@@ -176,7 +178,7 @@ const SubscriptionRequestView = () => {
 
   // Add helper function to format subscriber link
   const formatSubscriberLink = (url) => {
-    const apiBaseUrl = localStorage.getItem('apiBaseUrl') || '';
+    const apiBaseUrl = getRoleStorageItem('baseUrl') || '';
     const isInternal = url.startsWith(apiBaseUrl);
     const displayId = url.split('/').pop();
 

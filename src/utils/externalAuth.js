@@ -1,3 +1,5 @@
+import { getRoleStorageItem } from './roleStorage';
+
 const TOKEN_REFRESH_BUFFER_SECONDS = 30;
 
 const tokenCache = new Map();
@@ -23,7 +25,7 @@ const normalizeServer = (server) => {
 };
 
 const getServers = () => {
-  const raw = localStorage.getItem('externalServers');
+  const raw = getRoleStorageItem('externalServers');
   if (!raw) return [];
 
   try {
@@ -55,6 +57,26 @@ export const getExternalServerByBaseUrl = (baseUrl) => {
 
 const getCacheKey = (server) => server.id || server.baseUrl;
 
+const getTokenProxyUrl = () => {
+  if (typeof window === 'undefined') {
+    return '/external-oauth-token';
+  }
+
+  const currentUrl = new URL(window.location.href);
+  const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(currentUrl.hostname);
+  const currentPort = Number(currentUrl.port);
+
+  if (process.env.NODE_ENV === 'development' && isLocalHost && currentPort) {
+    currentUrl.port = String(currentPort + 1);
+    currentUrl.pathname = '/external-oauth-token';
+    currentUrl.search = '';
+    currentUrl.hash = '';
+    return currentUrl.toString();
+  }
+
+  return new URL('/external-oauth-token', window.location.origin).toString();
+};
+
 const getCachedToken = (cacheKey) => {
   const cached = tokenCache.get(cacheKey);
   if (!cached) {
@@ -71,22 +93,40 @@ const getCachedToken = (cacheKey) => {
 };
 
 const requestToken = async (server) => {
-  const body = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: server.oauthClientId,
-    client_secret: server.oauthClientSecret
-  });
+  let response;
 
-  const response = await fetch(server.oauthTokenEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: body.toString()
-  });
+  try {
+    response = await fetch(getTokenProxyUrl(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        tokenEndpoint: server.oauthTokenEndpoint,
+        clientId: server.oauthClientId,
+        clientSecret: server.oauthClientSecret
+      })
+    });
+  } catch (error) {
+    throw new Error(`Failed to reach OAuth token proxy for ${server.name || server.baseUrl}: ${error.message}`);
+  }
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch OAuth token for ${server.name || server.baseUrl}: ${response.status}`);
+    let message = '';
+    try {
+      const payload = await response.json();
+      const attemptedEndpoints = Array.isArray(payload?.attemptedEndpoints)
+        ? payload.attemptedEndpoints.filter(Boolean)
+        : [];
+      message = payload.message || payload.error || '';
+      if (attemptedEndpoints.length > 0) {
+        message = `${message} (attempted: ${attemptedEndpoints.join(', ')})`;
+      }
+    } catch {
+      message = await response.text();
+    }
+
+    throw new Error(`Failed to fetch OAuth token for ${server.name || server.baseUrl}: ${response.status}${message ? ` - ${message}` : ''}`);
   }
 
   const payload = await response.json();

@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { apiCall } from '../utils/api';
 import { getExternalAccessToken } from '../utils/externalAuth';
+import { getRoleStorageItem } from '../utils/roleStorage';
 
 const decodeJwtPayload = (token) => {
   if (!token || typeof token !== 'string') {
@@ -38,7 +39,7 @@ const SubscriptionDialog = ({ open, onClose, objectId }) => {
   const [selectedServer, setSelectedServer] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const servers = JSON.parse(localStorage.getItem('externalServers') || '[]');
+  const servers = JSON.parse(getRoleStorageItem('externalServers') || '[]');
 
   const handleSubmit = async () => {
     if (!selectedServer) return;

@@ -55,6 +55,7 @@ import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import { requireAccessToken, createAuthRequiredError } from '../utils/api';
 import { getExternalAccessToken, getExternalServerByBaseUrl } from '../utils/externalAuth';
+import { getRoleStorageItem } from '../utils/roleStorage';
 
 
 // Update EVENT_TYPES constant with standardized codes
@@ -253,7 +254,7 @@ const decodeJwtPayload = (token) => {
 
 const readConfiguredExternalServers = () => {
   try {
-    const parsed = JSON.parse(localStorage.getItem('externalServers') || '[]');
+    const parsed = JSON.parse(getRoleStorageItem('externalServers') || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -316,6 +317,16 @@ const buildSubscriptionPayload = ({
   return payload;
 };
 
+const extractActionRequestId = (location) => {
+  if (!location) return '';
+  const withoutQuery = String(location).split(/[?#]/)[0];
+  const marker = '/action-requests/';
+  if (withoutQuery.includes(marker)) {
+    return withoutQuery.split(marker).pop() || '';
+  }
+  return withoutQuery.split('/').filter(Boolean).pop() || '';
+};
+
 const LogisticsObjectView = () => {
   const { id } = useParams();
   const location = useLocation();
@@ -342,6 +353,7 @@ const LogisticsObjectView = () => {
   const [openSubscriptionDialog, setOpenSubscriptionDialog] = useState(false);
   const [creatingSubscription, setCreatingSubscription] = useState(false);
   const [createSubscriptionError, setCreateSubscriptionError] = useState(null);
+  const [createSubscriptionResult, setCreateSubscriptionResult] = useState(null);
   const configuredExternalServers = readConfiguredExternalServers();
   const [subscriptionForm, setSubscriptionForm] = useState(() => createInitialSubscriptionForm(configuredExternalServers));
   const [auditTrail, setAuditTrail] = useState(null);
@@ -359,11 +371,11 @@ const LogisticsObjectView = () => {
   const [processingActions, setProcessingActions] = useState({});
 
   // Get server info from location state, with refresh-safe fallback
-  const serverUrl = location.state?.serverUrl || localStorage.getItem('baseUrl');
+  const serverUrl = location.state?.serverUrl || getRoleStorageItem('baseUrl');
   const token = location.state?.token;
 
   const getRequestToken = useCallback(async (targetBaseUrl = serverUrl) => {
-    const internalBaseUrl = localStorage.getItem('baseUrl');
+    const internalBaseUrl = getRoleStorageItem('baseUrl');
 
     // Backward compatibility for navigation state that still passes a token.
     if (token) {
@@ -379,7 +391,7 @@ const LogisticsObjectView = () => {
   }, [serverUrl, token]);
 
   // Add this to determine if the object is external
-  const isExternalObject = serverUrl !== localStorage.getItem('baseUrl');
+  const isExternalObject = serverUrl !== getRoleStorageItem('baseUrl');
   const logisticsObjectId = id.includes('logistics-objects/')
     ? id.split('logistics-objects/')[1]
     : id;
@@ -631,6 +643,7 @@ const LogisticsObjectView = () => {
   const handleOpenSubscriptionDialog = () => {
     setSubscriptionForm(createInitialSubscriptionForm(configuredExternalServers));
     setCreateSubscriptionError(null);
+    setCreateSubscriptionResult(null);
     setOpenSubscriptionDialog(true);
   };
 
@@ -659,6 +672,7 @@ const LogisticsObjectView = () => {
     try {
       setCreatingSubscription(true);
       setCreateSubscriptionError(null);
+      setCreateSubscriptionResult(null);
 
       if (!subscriptionForm.subscriberServerBaseUrl) {
         throw new Error('Select the subscriber server');
@@ -708,7 +722,14 @@ const LogisticsObjectView = () => {
         throw new Error(errorText || `Failed to create subscription: ${response.statusText}`);
       }
 
+      const locationHeader = response.headers.get('Location') || response.headers.get('location') || '';
+      const requestId = extractActionRequestId(locationHeader);
+
       setOpenSubscriptionDialog(false);
+      setCreateSubscriptionResult({
+        requestId,
+        location: locationHeader
+      });
       setSubscriptionForm(createInitialSubscriptionForm(configuredExternalServers));
       await fetchSubscribers();
     } catch (err) {
@@ -717,6 +738,21 @@ const LogisticsObjectView = () => {
     } finally {
       setCreatingSubscription(false);
     }
+  };
+
+  const getSubscriptionRequestRoute = (requestLocation, requestId) => {
+    if (!requestId) return '/subscriptions-new';
+
+    const internalBaseUrl = getRoleStorageItem('baseUrl');
+    const externalServer = serverUrl !== internalBaseUrl
+      ? getExternalServerByBaseUrl(serverUrl)
+      : null;
+
+    if (externalServer && (!requestLocation || requestLocation.startsWith(serverUrl))) {
+      return `/external-subscription-requests/${externalServer.id}/${requestId}`;
+    }
+
+    return `/subscription-requests/${requestId}`;
   };
 
   const fetchAuditTrail = useCallback(async () => {
@@ -1443,6 +1479,36 @@ const LogisticsObjectView = () => {
           </Alert>
         )}
 
+        {createSubscriptionResult && (
+          <Alert
+            severity="success"
+            sx={{ mb: 2 }}
+            action={(
+              <Stack direction="row" spacing={1}>
+                {createSubscriptionResult.requestId && (
+                  <Button
+                    color="inherit"
+                    size="small"
+                    component={RouterLink}
+                    to={getSubscriptionRequestRoute(
+                      createSubscriptionResult.location,
+                      createSubscriptionResult.requestId
+                    )}
+                  >
+                    View Request
+                  </Button>
+                )}
+                <Button color="inherit" size="small" component={RouterLink} to="/subscriptions-new">
+                  Manage Requests
+                </Button>
+              </Stack>
+            )}
+          >
+            Subscription request{createSubscriptionResult.requestId ? ` ${createSubscriptionResult.requestId}` : ''} created.
+            It may remain pending until approved.
+          </Alert>
+        )}
+
         {subscribers.length === 0 ? (
           <Box
             sx={{
@@ -1709,9 +1775,9 @@ const LogisticsObjectView = () => {
     if (!url) return null;
     
     // Get all configured servers
-    const externalServers = JSON.parse(localStorage.getItem('externalServers') || '[]');
+    const externalServers = JSON.parse(getRoleStorageItem('externalServers') || '[]');
     const currentServer = {
-      baseUrl: localStorage.getItem('baseUrl')
+      baseUrl: getRoleStorageItem('baseUrl')
     };
     
     // Check if URL matches any configured server

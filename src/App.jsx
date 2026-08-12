@@ -2,8 +2,10 @@ import React, { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Box, CssBaseline, CircularProgress, Alert, Button } from '@mui/material';
 import Sidebar from './components/Sidebar';
+import ThemeModeToggle from './components/ThemeModeToggle';
 import { initAuth } from './auth/keycloak';
 import { initializeRuntimeSettings } from './utils/runtimeSettings';
+import { getRoleStorageItem, setRoleStorageItem } from './utils/roleStorage';
 
 const Database = lazy(() => import('./pages/Database'));
 const LogisticsObjectView = lazy(() => import('./pages/LogisticsObjectView'));
@@ -107,10 +109,10 @@ function App() {
                 title: `Logistics Object ${logisticsObjectId}`
               };
               
-              const storedNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+              const storedNotifications = JSON.parse(getRoleStorageItem('notifications') || '[]');
               if (!storedNotifications.some(n => n.id === processedNotification.id)) {
                 const updatedNotifications = [...storedNotifications, processedNotification];
-                localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
+                setRoleStorageItem('notifications', JSON.stringify(updatedNotifications));
                 console.log('Processed notification:', processedNotification);
               }
             }
@@ -152,7 +154,8 @@ function App() {
 
   if (authInitializing) {
     return (
-      <Box sx={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center' }}>
+      <Box sx={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', color: 'text.primary' }}>
+        <ThemeModeToggle />
         <CircularProgress />
       </Box>
     );
@@ -160,14 +163,15 @@ function App() {
 
   return (
     <Router>
-      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default', color: 'text.primary' }}>
         <CssBaseline />
+        <ThemeModeToggle />
         <Sidebar 
           open={sidebarOpen} 
           toggleDrawer={toggleSidebar}
           isAuthenticated={isAuthenticated}
         />
-        <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+        <Box component="main" sx={{ flexGrow: 1, p: 3, bgcolor: 'background.default', color: 'text.primary' }}>
           {authWarning && (
             <Alert
               severity="warning"
