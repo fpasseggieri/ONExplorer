@@ -26,14 +26,14 @@ import {
 } from '@mui/material';
 
 import {
-    Timeline,
-    TimelineItem,
-    TimelineSeparator,
-    TimelineConnector,
-    TimelineContent,
-    TimelineDot,
-    TimelineOppositeContent
-  } from '@mui/lab';
+  Timeline,
+  TimelineItem,
+  TimelineSeparator,
+  TimelineConnector,
+  TimelineContent,
+  TimelineDot,
+  TimelineOppositeContent
+} from '../components/Timeline';
   
 import {
   ArrowBack as ArrowBackIcon,

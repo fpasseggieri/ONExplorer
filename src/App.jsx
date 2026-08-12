@@ -16,7 +16,6 @@ const SubscriptionRequestView = lazy(() => import('./pages/SubscriptionRequestVi
 const Changes = lazy(() => import('./pages/Changes'));
 const ChangeRequestView = lazy(() => import('./pages/ChangeRequestView'));
 const Settings = lazy(() => import('./pages/Settings'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
 
 function App() {
   const runtimeSettingsInitialized = React.useRef(false);
@@ -191,7 +190,6 @@ function App() {
           <Routes>
             <Route path="/settings" element={<Settings />} />
             <Route path="/" element={<Database isAuthenticated={isAuthenticated} />} />
-            <Route path="/dashboard" element={isAuthenticated ? <Dashboard /> : <Navigate to="/" replace />} />
             <Route path="/logistics-objects/create" element={isAuthenticated ? <CreateLogisticsObject /> : <Navigate to="/" replace />} />
             <Route path="/notifications" element={isAuthenticated ? <Notifications /> : <Navigate to="/" replace />} />
             <Route path="/notifications-new" element={isAuthenticated ? <NotificationsNew /> : <Navigate to="/" replace />} />
